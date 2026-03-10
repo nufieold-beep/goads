@@ -1,0 +1,105 @@
+package pbs
+
+import (
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+
+	"github.com/julienschmidt/httprouter"
+	"github.com/prebid/prebid-server/v4/config"
+	"github.com/prebid/prebid-server/v4/logger"
+	"github.com/prebid/prebid-server/v4/usersync"
+)
+
+// Recaptcha code from https://github.com/haisum/recaptcha/blob/master/recaptcha.go
+const RECAPTCHA_URL = "https://www.google.com/recaptcha/api/siteverify"
+
+type UserSyncDeps struct {
+	ExternalUrl      string
+	RecaptchaSecret  string
+	HostCookieConfig *config.HostCookie
+	PriorityGroups   [][]string
+	CertPool         *x509.CertPool
+}
+
+// Struct for parsing json in google's response
+type googleResponse struct {
+	Success    bool
+	ErrorCodes []string `json:"error-codes"`
+}
+
+func (deps *UserSyncDeps) VerifyRecaptcha(response string) error {
+	ts := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{RootCAs: deps.CertPool},
+	}
+
+	client := &http.Client{
+		Transport: ts,
+	}
+	resp, err := client.PostForm(RECAPTCHA_URL,
+		url.Values{"secret": {deps.RecaptchaSecret}, "response": {response}})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		// read the entire response body to ensure full connection reuse if there's an
+		// error while decoding the json
+		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			logger.Errorf("Captcha verify draining response body failed: %v", err)
+		}
+		resp.Body.Close()
+	}()
+
+	var gr = googleResponse{}
+	if err := json.NewDecoder(resp.Body).Decode(&gr); err != nil {
+		return err
+	}
+	if !gr.Success {
+		return fmt.Errorf("Captcha verify failed: %s", strings.Join(gr.ErrorCodes, ", "))
+	}
+	return nil
+}
+
+func (deps *UserSyncDeps) OptOut(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	optout := r.FormValue("optout")
+	rr := r.FormValue("g-recaptcha-response")
+	encoder := usersync.Base64Encoder{}
+	decoder := usersync.Base64Decoder{}
+
+	if rr == "" {
+		http.Redirect(w, r, fmt.Sprintf("%s/static/optout.html", deps.ExternalUrl), http.StatusMovedPermanently)
+		return
+	}
+
+	err := deps.VerifyRecaptcha(rr)
+	if err != nil {
+		logger.Infof("Opt Out failed recaptcha: %v", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	// Read Cookie
+	pc := usersync.ReadCookie(r, decoder, deps.HostCookieConfig)
+	usersync.SyncHostCookie(r, pc, deps.HostCookieConfig)
+	pc.SetOptOut(optout != "")
+
+	// Write Cookie
+	encodedCookie, err := encoder.Encode(pc)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	usersync.WriteCookie(w, encodedCookie, deps.HostCookieConfig, false)
+
+	if optout == "" {
+		http.Redirect(w, r, deps.HostCookieConfig.OptInURL, http.StatusMovedPermanently)
+	} else {
+		http.Redirect(w, r, deps.HostCookieConfig.OptOutURL, http.StatusMovedPermanently)
+	}
+}

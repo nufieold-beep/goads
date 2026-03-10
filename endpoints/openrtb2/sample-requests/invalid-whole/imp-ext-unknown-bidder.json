@@ -1,0 +1,26 @@
+{
+  "description": "Unknown biddername in bid request's sole imp element's ext",
+  "mockBidRequest": {
+    "id": "req-id",
+    "imp": [
+      {
+        "id": "imp-id",
+        "audio": {
+          "mimes": [
+            "video/mp4"
+            ]
+        },
+        "ext": {
+          "noBidderShouldEverHaveThisName": {
+            "bogusParam": 5
+          }
+        }
+      }
+    ],
+    "app": {
+      "id": "app_001"
+    }
+  },
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: request.imp[0].ext.prebid.bidder must contain at least one bidder"
+}

@@ -1,0 +1,46 @@
+{
+  "description": "Identical id's in more than one imp element",
+  "mockBidRequest": {
+    "id": "some-request-id",
+    "site": {
+      "page": "prebid.org"
+    },
+    "imp": [
+      {
+        "id": "some-impression-id",
+        "banner": {
+          "format": [
+            {
+              "w": 300,
+              "h": 250
+            }
+          ]
+        },
+        "ext": {
+          "appnexus": {
+            "placementId": 12883451
+          }
+        }
+      },
+      {
+        "id": "some-impression-id",
+        "banner": {
+          "format": [
+            {
+              "w": 200,
+              "h": 250
+            }
+          ]
+        },
+        "ext": {
+          "appnexus": {
+            "placementId": 10433395
+          }
+        }
+      }
+    ],
+    "tmax": 500
+  },
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: request.imp[0].id and request.imp[1].id are both \"some-impression-id\". Imp IDs must be unique.\n"
+}

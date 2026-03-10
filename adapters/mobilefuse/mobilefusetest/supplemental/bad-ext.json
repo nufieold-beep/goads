@@ -1,0 +1,32 @@
+{
+    "expectedMakeRequestsErrors": [
+        {
+            "value": "expect { or n, but found \"",
+            "comparison": "literal"
+        }
+    ],
+
+    "mockBidRequest": {
+        "id": "test-request-id",
+        "imp": [
+            {
+                "id": "1",
+                "banner": {
+                    "format": [
+                        {
+                            "w": 300,
+                            "h": 250
+                        },
+                        {
+                            "w": 300,
+                            "h": 600
+                        }
+                    ]
+                },
+                "ext": "aaa"
+            }
+        ]
+    },
+
+    "httpCalls": []
+}

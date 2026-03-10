@@ -1,0 +1,29 @@
+{
+  "description": "Bid request targeted towards a disabled adapter. We expect an error.",
+  "config": {
+    "disabledAdapters": ["appnexus"]
+  },
+  "mockBidRequest": {
+    "id": "some-request-id",
+    "site": {
+      "page": "test.somepage.com"
+    },
+    "imp": [
+      {
+        "id": "my-imp-id",
+        "video": {
+          "mimes": [
+            "video/mp4"
+          ]
+        },
+        "ext": {
+          "appnexus": {
+            "placementId": 12883451
+          }
+        }
+      }
+    ]
+  },
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: Bidder \"appnexus\" has been disabled on this instance of Prebid Server. Please work with the PBS host to enable this bidder again.\nInvalid request: request.imp[0].ext.prebid.bidder must contain at least one bidder\n"
+}

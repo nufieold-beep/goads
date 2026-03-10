@@ -1,0 +1,238 @@
+package smartadserver
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"path"
+	"strconv"
+
+	"github.com/prebid/openrtb/v20/openrtb2"
+	"github.com/prebid/prebid-server/v4/adapters"
+	"github.com/prebid/prebid-server/v4/config"
+	"github.com/prebid/prebid-server/v4/errortypes"
+	"github.com/prebid/prebid-server/v4/openrtb_ext"
+	"github.com/prebid/prebid-server/v4/util/jsonutil"
+)
+
+type SmartAdserverAdapter struct {
+	defaultHost   string
+	secondaryHost string
+	Server        config.Server
+}
+
+type PendingImpAndExt struct {
+	imp openrtb2.Imp
+	ext openrtb_ext.ExtImpSmartadserverOut
+}
+
+// Builder builds a new instance of the SmartAdserver adapter for the given bidder with the given config.
+func Builder(bidderName openrtb_ext.BidderName, config config.Adapter, server config.Server) (adapters.Bidder, error) {
+	bidder := &SmartAdserverAdapter{
+		defaultHost:   config.Endpoint,
+		secondaryHost: "https://prebid-global.smartadserver.com",
+	}
+	return bidder, nil
+}
+
+// MakeRequests makes the HTTP requests which should be made to fetch bids.
+func (a *SmartAdserverAdapter) MakeRequests(request *openrtb2.BidRequest, reqInfo *adapters.ExtraRequestInfo) ([]*adapters.RequestData, []error) {
+	if len(request.Imp) == 0 {
+		return nil, []error{&errortypes.BadInput{
+			Message: "No impression in the bid request",
+		}}
+	}
+
+	var adapterRequests []*adapters.RequestData
+	var errs []error
+
+	// We copy the original request.
+	smartRequest := *request
+
+	// We create or copy the Site object.
+	if smartRequest.Site == nil {
+		smartRequest.Site = &openrtb2.Site{}
+	} else {
+		site := *smartRequest.Site
+		smartRequest.Site = &site
+	}
+
+	// We create or copy the Publisher object.
+	if smartRequest.Site.Publisher == nil {
+		smartRequest.Site.Publisher = &openrtb2.Publisher{}
+	} else {
+		publisher := *smartRequest.Site.Publisher
+		smartRequest.Site.Publisher = &publisher
+	}
+
+	var pendingImpsAndExts []PendingImpAndExt
+	var imps []openrtb2.Imp
+	isProgrammaticGuaranteed := false
+	impExtKey := "bidder"
+
+	// Filter out impressions that do not have the proper bidder extensions
+	for _, imp := range request.Imp {
+		var bidderExt adapters.ExtImpBidder
+		if err := jsonutil.Unmarshal(imp.Ext, &bidderExt); err != nil {
+			errs = append(errs, &errortypes.BadInput{
+				Message: "Error parsing bidderExt object",
+			})
+			continue
+		}
+
+		var smartadserverExtIn openrtb_ext.ExtImpSmartadserverIn
+		if err := jsonutil.Unmarshal(bidderExt.Bidder, &smartadserverExtIn); err != nil {
+			errs = append(errs, &errortypes.BadInput{
+				Message: "Error parsing smartadserverExt parameters",
+			})
+			continue
+		}
+
+		if !isProgrammaticGuaranteed && smartadserverExtIn.ProgrammaticGuaranteed {
+			isProgrammaticGuaranteed = true
+			impExtKey = "smartadserver"
+		}
+
+		pendingImpsAndExts = append(pendingImpsAndExts, PendingImpAndExt{imp, openrtb_ext.ExtImpSmartadserverOut(smartadserverExtIn)})
+
+		// Properly set publisher id from extentions for coming request
+		smartRequest.Site.Publisher.ID = strconv.Itoa(smartadserverExtIn.NetworkID)
+	}
+
+	// Loop again to serialize extension properly
+	for _, pendingImpAndExt := range pendingImpsAndExts {
+		var completeExt map[string]any
+		if err := json.Unmarshal(pendingImpAndExt.imp.Ext, &completeExt); err != nil {
+			errs = append(errs, &errortypes.BadInput{
+				Message: "Error parsing imp.Ext object",
+			})
+			continue
+		}
+
+		// Delete `bidder` extensions, then write it again with either `bidder` or `smartadserver` key, without unwanted elements.
+		delete(completeExt, "bidder")
+		completeExt[impExtKey] = pendingImpAndExt.ext
+
+		var errMarshal error
+		if pendingImpAndExt.imp.Ext, errMarshal = json.Marshal(completeExt); errMarshal != nil {
+			errs = append(errs, &errortypes.BadInput{
+				Message: errMarshal.Error(),
+			})
+			continue
+		}
+
+		imps = append(imps, pendingImpAndExt.imp)
+	}
+
+	// Only create the request if it has at least one correctly formatted impression
+	if len(imps) != 0 {
+		smartRequest.Imp = imps
+
+		reqJSON, err := json.Marshal(smartRequest)
+		if err != nil {
+			errs = append(errs, &errortypes.BadInput{
+				Message: "Error parsing reqJSON object",
+			})
+			return nil, errs
+		}
+
+		url, err := a.BuildEndpointURL(isProgrammaticGuaranteed)
+		if url == "" {
+			errs = append(errs, err)
+			return nil, errs
+		}
+
+		headers := http.Header{}
+		headers.Add("Content-Type", "application/json;charset=utf-8")
+		headers.Add("Accept", "application/json")
+
+		adapterRequests = append(adapterRequests, &adapters.RequestData{
+			Method:  "POST",
+			Uri:     url,
+			Body:    reqJSON,
+			Headers: headers,
+			ImpIDs:  openrtb_ext.GetImpIDs(smartRequest.Imp),
+		})
+	}
+
+	return adapterRequests, errs
+}
+
+// MakeBids unpacks the server's response into Bids.
+func (a *SmartAdserverAdapter) MakeBids(internalRequest *openrtb2.BidRequest, externalRequest *adapters.RequestData, response *adapters.ResponseData) (*adapters.BidderResponse, []error) {
+	if response.StatusCode == http.StatusNoContent {
+		return nil, nil
+	}
+
+	if response.StatusCode == http.StatusBadRequest {
+		return nil, []error{&errortypes.BadInput{
+			Message: fmt.Sprintf("Unexpected status code: %d. Run with request.debug = 1 for more info", response.StatusCode),
+		}}
+	}
+
+	if response.StatusCode != http.StatusOK {
+		return nil, []error{&errortypes.BadServerResponse{
+			Message: "Unexpected status code: " + strconv.Itoa(response.StatusCode) + ". Run with request.debug = 1 for more info",
+		}}
+	}
+
+	var bidResp openrtb2.BidResponse
+	if err := jsonutil.Unmarshal(response.Body, &bidResp); err != nil {
+		return nil, []error{err}
+	}
+
+	bidResponse := adapters.NewBidderResponseWithBidsCapacity(5)
+
+	for _, sb := range bidResp.SeatBid {
+		for i := 0; i < len(sb.Bid); i++ {
+			bid := sb.Bid[i]
+			bidResponse.Bids = append(bidResponse.Bids, &adapters.TypedBid{
+				Bid:     &bid,
+				BidType: getBidTypeFromMarkupType(bid.MType),
+			})
+
+		}
+	}
+	return bidResponse, []error{}
+}
+
+// BuildEndpointURL : Builds endpoint url
+func (a *SmartAdserverAdapter) BuildEndpointURL(isProgrammaticGuaranteed bool) (string, error) {
+	host := a.defaultHost
+
+	if isProgrammaticGuaranteed {
+		host = a.secondaryHost
+	}
+
+	uri, err := url.Parse(host)
+	if err != nil || uri.Scheme == "" || uri.Host == "" {
+		return "", &errortypes.BadInput{
+			Message: "Malformed URL: " + host + ".",
+		}
+	}
+
+	if isProgrammaticGuaranteed {
+		uri.Path = path.Join(uri.Path, "ortb")
+	} else {
+		uri.Path = path.Join(uri.Path, "api/bid")
+		uri.RawQuery = "callerId=5"
+	}
+
+	return uri.String(), nil
+}
+
+func getBidTypeFromMarkupType(mtype openrtb2.MarkupType) openrtb_ext.BidType {
+	switch mtype {
+	case openrtb2.MarkupVideo:
+		return openrtb_ext.BidTypeVideo
+	case openrtb2.MarkupAudio:
+		return openrtb_ext.BidTypeAudio
+	case openrtb2.MarkupBanner:
+		return openrtb_ext.BidTypeBanner
+	case openrtb2.MarkupNative:
+		return openrtb_ext.BidTypeNative
+	default:
+		return openrtb_ext.BidTypeBanner
+	}
+}

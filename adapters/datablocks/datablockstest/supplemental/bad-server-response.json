@@ -1,0 +1,89 @@
+{
+    "mockBidRequest":
+    {
+        "id": "some-request-id",
+        "imp": [
+        {
+            "id": "some-impression-id",
+            "banner":
+            {
+                "format": [
+                {
+                    "w": 300,
+                    "h": 250
+                }]
+            },
+            "ext":
+            {
+                "bidder":
+                {
+                    "host": "pbserver.dblks.net",
+                    "sourceId": 123
+                }
+            }
+        }],
+        "site":
+        {
+            "page": "prebid.org"
+        },
+        "device":
+        {
+            "ip": "8.8.8.10"
+        },
+        "at": 1,
+        "tmax": 500
+    },
+    "httpCalls": [
+    {
+        "expectedRequest":
+        {
+            "uri": "http://pbserver.dblks.net/openrtb2?sid=123",
+            "body":
+            {
+                "id": "some-request-id",
+                "imp": [
+                {
+                    "id": "some-impression-id",
+                    "banner":
+                    {
+                        "format": [
+                        {
+                            "w": 300,
+                            "h": 250
+                        }]
+                    },
+                    "ext":
+                    {
+                        "bidder":
+                        {
+                            "host": "pbserver.dblks.net",
+                            "sourceId": 123
+                        }
+                    }
+                }],
+                "site":
+                {
+                    "page": "prebid.org"
+                },
+                "device":
+                {
+                    "ip": "8.8.8.10"
+                },
+                "at": 1,
+                "tmax": 500
+            },
+            "impIDs":["some-impression-id"]
+        },
+        "mockResponse":
+        {
+            "status": 500,
+            "body": {}
+        }
+    }],
+    "expectedMakeBidsErrors": [
+      {
+        "value": "ERR, response with status 500",
+        "comparison": "literal"  
+      }
+    ]
+}

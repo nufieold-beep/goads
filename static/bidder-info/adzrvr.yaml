@@ -1,0 +1,13 @@
+endpoint: "http://localhost:8080/video/vast"
+maintainer:
+  email: ops@adzrvr.com
+modifyingVastXmlAllowed: true
+capabilities:
+  app:
+    mediaTypes:
+      - banner
+      - video
+  site:
+    mediaTypes:
+      - banner
+      - video

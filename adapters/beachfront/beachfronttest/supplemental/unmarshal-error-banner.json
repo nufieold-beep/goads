@@ -1,0 +1,35 @@
+{
+  "mockBidRequest": {
+    "id": "some_test_ad",
+    "site": {
+      "page": "https://some.domain.us/some/page.html"
+    },
+    "imp": [
+      {
+        "bidfloor": 0.02,
+        "id": "fail",
+        "banner": {
+          "format": [
+            {
+              "w": 300,
+              "h": 250
+            }
+          ]
+        },
+        "ext": {
+          "bidder": {
+            "bidfloor": 0.02,
+            "appId": 123456
+          }
+        }
+      }
+    ]
+  },
+
+  "expectedMakeRequestsErrors": [
+    {
+      "value": "ignoring imp id=fail, error while decoding extImpBeachfront, err: cannot unmarshal openrtb_ext.ExtImpBeachfront.AppId: expects \" or n, but found 1",
+      "comparison": "literal"
+    }
+  ]
+}

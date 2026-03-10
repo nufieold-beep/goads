@@ -1,0 +1,26 @@
+{
+    "expectedMakeRequestsErrors": [
+        {
+            "value": "No valid imps",
+            "comparison": "literal"
+        }
+    ],
+
+    "mockBidRequest": {
+        "id": "test-request-id",
+        "imp": [
+            {
+                "id": "1",
+                "ext": {
+                    "bidder": {
+                        "placement_id": 999999
+                    }
+                }
+            }
+        ]
+    },
+
+    "httpCalls": [],
+
+    "expectedBidResponses": []
+}

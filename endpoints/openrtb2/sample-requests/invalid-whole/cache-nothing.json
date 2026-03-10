@@ -1,0 +1,31 @@
+{
+  "description": "Empty cache field in root level extension",
+  "mockBidRequest": {
+    "id": "some-request-id",
+    "site": {
+      "page": "test.somepage.com"
+    },
+    "imp": [
+      {
+        "id": "my-imp-id",
+        "video": {
+          "mimes": [
+            "video/mp4"
+            ]
+        },
+        "ext": {
+          "appnexus": {
+            "placementId": 12883451
+          }
+        }
+      }
+    ],
+    "ext": {
+      "prebid": {
+        "cache": {}
+      }
+    }
+  },
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: request.ext is invalid: request.ext.prebid.cache requires one of the \"bids\" or \"vastxml\" properties\n"
+}

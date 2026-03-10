@@ -1,0 +1,72 @@
+{
+    "mockBidRequest": {
+        "id": "test-request-id",
+        "imp": [
+            {
+                "id": "test-imp-id",
+                "banner": {
+                    "format": [
+                        {
+                            "w": 300,
+                            "h": 250
+                        }
+                    ]
+                },
+                "ext": {
+                    "bidder": {
+                        "siteId": "569749"
+                    }
+                }
+            }
+        ]
+    },
+    "httpCalls": [
+        {
+            "expectedRequest": {
+                "uri": "http://host/endpoint",
+                "body": {
+                    "id": "test-request-id",
+                    "imp": [
+                        {
+                            "id": "test-imp-id",
+                            "banner": {
+                                "format": [
+                                    {
+                                        "w": 300,
+                                        "h": 250
+                                    }
+                                ],
+                                "w": 300,
+                                "h": 250
+                            },
+                            "ext": {
+                                "bidder": {
+                                    "siteId": "569749"
+                                }
+                            }
+                        }
+                    ],
+                    "ext": {
+                        "ixdiag": {
+                            "pbsp": "go",
+                            "pbsv": "unknown"
+                        }
+                    }
+                },
+                "impIDs":["test-imp-id"]
+            },
+            "mockResponse": {
+                "status": 200,
+                "body": {
+                    "id": 1
+                }
+            }
+        }
+    ],
+    "expectedMakeBidsErrors": [
+        {
+            "value": "JSON parsing error: cannot unmarshal openrtb2.BidResponse.ID: expects \" or n, but found 1",
+            "comparison": "literal"
+        }
+    ]
+}

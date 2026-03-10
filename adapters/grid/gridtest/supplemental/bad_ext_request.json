@@ -1,0 +1,30 @@
+{
+  "mockBidRequest": {
+    "id": "test-request-id",
+    "imp": [
+      {
+        "id": "test-imp-id",
+        "banner": {
+          "format": [
+            {
+              "w": 300,
+              "h": 250
+            }
+          ]
+        },
+        "ext":  "any"
+    }
+    ]
+  },
+  "expectedMakeRequestsErrors": [
+    {
+      "value": "expect { or n, but found \"",
+      "comparison": "literal"
+    },
+    {
+      "value": "No valid impressions for grid",
+      "comparison": "literal"
+    }
+  ],
+  "httpCalls": []
+}

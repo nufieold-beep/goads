@@ -1,0 +1,23 @@
+endpoint: "http://sa-lb.deliverimp.com/pserver"
+maintainer:
+  email: "sa-support@brightcom.com"
+gvlVendorID: 883
+capabilities:
+  site:
+    mediaTypes:
+    - banner
+    - video
+    - native
+    
+  app:
+    mediaTypes:
+    - banner
+    - video
+    - native
+userSync:
+  redirect:
+    url: "https://sa-cs.deliverimp.com/pbserver?gdpr={{.GDPR}}&gdpr_consent={{.GDPRConsent}}&us_privacy={{.USPrivacy}}&gpp={{.GPP}}&gpp_sid={{.GPPSID}}&redir={{.RedirectURL}}"
+    userMacro: "[UID]"
+  iframe:
+    url: "https://sa-cs.deliverimp.com/pbserverIframe?gdpr={{.GDPR}}&gdpr_consent={{.GDPRConsent}}&us_privacy={{.USPrivacy}}&gpp={{.GPP}}&gpp_sid={{.GPPSID}}&pbserverUrl={{.RedirectURL}}"
+    userMacro: "[UID]"

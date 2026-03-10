@@ -1,0 +1,88 @@
+E0309 18:28:40.175720   10500 logger.go:22] Error calling GET https://vendor-list.consensu.org/v2/vendor-list.json. Cookie syncs may be affected: context deadline exceeded
+E0309 18:28:40.178052   10500 logger.go:22] Error calling GET https://vendor-list.consensu.org/v3/vendor-list.json. Cookie syncs may be affected: context deadline exceeded
+E0309 18:28:40.322270   10500 logger.go:22] Error listening for TCP connections on :8000: Error listening for TCP connections on :8000: listen tcp :8000: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted. for main server
+F0309 18:28:40.323610   10500 logger.go:27] prebid-server returned an error: Error listening for TCP connections on :8000: listen tcp :8000: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+
+goroutine 1 [running]:
+github.com/prebid/prebid-server/v4/logger.(*GlogLogger).Fatalf(0x3d1aadc6e008?, {0x7ff61d2cae29?, 0x3d1aae713100?}, {0x3d1aae7133f0?, 0x3d1aae6a8000?, 0x3d1aae307680?})
+	C:/Users/viadsmedia/Videos/vast1/adzrvr/prebid-server-master/logger/glog.go:34 +0x3b
+github.com/prebid/prebid-server/v4/logger.Fatalf(...)
+	C:/Users/viadsmedia/Videos/vast1/adzrvr/prebid-server-master/logger/logger.go:27
+main.serve(0x3d1aadc6e008)
+	C:/Users/viadsmedia/Videos/vast1/adzrvr/prebid-server-master/main.go:84 +0x2d4
+main.main()
+	C:/Users/viadsmedia/Videos/vast1/adzrvr/prebid-server-master/main.go:53 +0x31d
+
+E0309 18:28:40.331241   10500 glog.go:650] abortProcess returned unexpectedly: not supported by windows
+goroutine profile: total 9
+2 @ 0x7ff61c51b54e 0x7ff61c4f8e85 0x7ff61caafd25 0x7ff61c522de1
+#	0x7ff61caafd24	github.com/prebid/prebid-server/v4/util/task.(*TickerTask).runRecurring+0x84	C:/Users/viadsmedia/Videos/vast1/adzrvr/prebid-server-master/util/task/ticker_task.go:46
+
+1 @ 0x7ff61c4b0531 0x7ff61c51d1b8 0x7ff61ce91653 0x7ff61c522de1
+#	0x7ff61c51d1b7	os/signal.signal_recv+0x97	C:/Program Files/Go/src/runtime/sigqueue.go:152
+#	0x7ff61ce91652	os/signal.loop+0x12		C:/Program Files/Go/src/os/signal/signal_unix.go:23
+
+1 @ 0x7ff61c4d8e71 0x7ff61c51a29d 0x7ff61c91caf1 0x7ff61c91c925 0x7ff61c9197a9 0x7ff61c931fae 0x7ff61c936a1b 0x7ff61c936a00 0x7ff61c9369f9 0x7ff61cf59c34 0x7ff61cf59bc4 0x7ff61cf597dd 0x7ff61c4e59c7 0x7ff61c522de1
+#	0x7ff61c91caf0	runtime/pprof.writeRuntimeProfile+0xb0					C:/Program Files/Go/src/runtime/pprof/pprof.go:851
+#	0x7ff61c91c924	runtime/pprof.writeGoroutine+0x44					C:/Program Files/Go/src/runtime/pprof/pprof.go:784
+#	0x7ff61c9197a8	runtime/pprof.(*Profile).WriteTo+0x148					C:/Program Files/Go/src/runtime/pprof/pprof.go:408
+#	0x7ff61c931fad	github.com/golang/glog.ctxfatalf+0x12d					C:/Users/viadsmedia/go/pkg/mod/github.com/golang/glog@v1.2.4/glog.go:652
+#	0x7ff61c936a1a	github.com/golang/glog.fatalf+0x3a					C:/Users/viadsmedia/go/pkg/mod/github.com/golang/glog@v1.2.4/glog.go:657
+#	0x7ff61c9369ff	github.com/golang/glog.FatalDepthf+0x1f					C:/Users/viadsmedia/go/pkg/mod/github.com/golang/glog@v1.2.4/glog.go:676
+#	0x7ff61c9369f8	github.com/prebid/prebid-server/v4/logger.(*GlogLogger).Fatalf+0x18	C:/Users/viadsmedia/Videos/vast1/adzrvr/prebid-server-master/logger/glog.go:34
+#	0x7ff61cf59c33	github.com/prebid/prebid-server/v4/logger.Fatalf+0x2d3			C:/Users/viadsmedia/Videos/vast1/adzrvr/prebid-server-master/logger/logger.go:27
+#	0x7ff61cf59bc3	main.serve+0x263							C:/Users/viadsmedia/Videos/vast1/adzrvr/prebid-server-master/main.go:84
+#	0x7ff61cf597dc	main.main+0x31c								C:/Users/viadsmedia/Videos/vast1/adzrvr/prebid-server-master/main.go:53
+#	0x7ff61c4e59c6	runtime.main+0x2c6							C:/Program Files/Go/src/runtime/proc.go:290
+
+1 @ 0x7ff61c51b54e 0x7ff61c4aa38e 0x7ff61c4a9eb2 0x7ff61cf58052 0x7ff61c522de1
+#	0x7ff61cf58051	github.com/prebid/prebid-server/v4/server.shutdownAfterSignals+0x51	C:/Users/viadsmedia/Videos/vast1/adzrvr/prebid-server-master/server/server.go:197
+
+1 @ 0x7ff61c51b54e 0x7ff61c4dc897 0x7ff61c51a685 0x7ff61c5a0d47 0x7ff61c5a208c 0x7ff61c5a26e5 0x7ff61c5a32ee 0x7ff61c661985 0x7ff61c6764c5 0x7ff61c6e1a7b 0x7ff61c5dc878 0x7ff61c6e1c5e 0x7ff61c6ded3b 0x7ff61c6e5445 0x7ff61c6e5446 0x7ff61c7309d7 0x7ff61c56584e 0x7ff61c779105 0x7ff61c7790d3 0x7ff61c7797cb 0x7ff61c779f98 0x7ff61c79bdea 0x7ff61c79b1d2 0x7ff61c522de1
+#	0x7ff61c51a684	internal/poll.runtime_pollWait+0x84		C:/Program Files/Go/src/runtime/netpoll.go:351
+#	0x7ff61c5a0d46	internal/poll.(*pollDesc).wait+0x26		C:/Program Files/Go/src/internal/poll/fd_poll_runtime.go:84
+#	0x7ff61c5a208b	internal/poll.(*FD).waitIO+0x4b			C:/Program Files/Go/src/internal/poll/fd_windows.go:214
+#	0x7ff61c5a26e4	internal/poll.(*FD).execIO+0x364		C:/Program Files/Go/src/internal/poll/fd_windows.go:297
+#	0x7ff61c5a32ed	internal/poll.(*FD).Read+0x20d			C:/Program Files/Go/src/internal/poll/fd_windows.go:586
+#	0x7ff61c661984	net.(*netFD).Read+0x24				C:/Program Files/Go/src/net/fd_posix.go:68
+#	0x7ff61c6764c4	net.(*conn).Read+0x44				C:/Program Files/Go/src/net/net.go:196
+#	0x7ff61c6e1a7a	crypto/tls.(*atLeastReader).Read+0x3a		C:/Program Files/Go/src/crypto/tls/conn.go:815
+#	0x7ff61c5dc877	bytes.(*Buffer).ReadFrom+0x97			C:/Program Files/Go/src/bytes/buffer.go:229
+#	0x7ff61c6e1c5d	crypto/tls.(*Conn).readFromUntil+0xdd		C:/Program Files/Go/src/crypto/tls/conn.go:837
+#	0x7ff61c6ded3a	crypto/tls.(*Conn).readRecordOrCCS+0x3da	C:/Program Files/Go/src/crypto/tls/conn.go:626
+#	0x7ff61c6e5444	crypto/tls.(*Conn).readRecord+0x144		C:/Program Files/Go/src/crypto/tls/conn.go:588
+#	0x7ff61c6e5445	crypto/tls.(*Conn).Read+0x145			C:/Program Files/Go/src/crypto/tls/conn.go:1393
+#	0x7ff61c7309d6	bufio.(*Reader).Read+0x196			C:/Program Files/Go/src/bufio/bufio.go:245
+#	0x7ff61c56584d	io.ReadAtLeast+0x8d				C:/Program Files/Go/src/io/io.go:335
+#	0x7ff61c779104	io.ReadFull+0x64				C:/Program Files/Go/src/io/io.go:354
+#	0x7ff61c7790d2	net/http.http2readFrameHeader+0x32		C:/Program Files/Go/src/net/http/h2_bundle.go:1805
+#	0x7ff61c7797ca	net/http.(*http2Framer).ReadFrameHeader+0x6a	C:/Program Files/Go/src/net/http/h2_bundle.go:2071
+#	0x7ff61c779f97	net/http.(*http2Framer).ReadFrame+0x17		C:/Program Files/Go/src/net/http/h2_bundle.go:2130
+#	0x7ff61c79bde9	net/http.(*http2clientConnReadLoop).run+0xc9	C:/Program Files/Go/src/net/http/h2_bundle.go:9550
+#	0x7ff61c79b1d1	net/http.(*http2ClientConn).readLoop+0x51	C:/Program Files/Go/src/net/http/h2_bundle.go:9419
+
+1 @ 0x7ff61c51b54e 0x7ff61c4dc897 0x7ff61c51a685 0x7ff61c5a0d47 0x7ff61c5a208c 0x7ff61c5a26e5 0x7ff61c5a32ee 0x7ff61c661985 0x7ff61c6764c5 0x7ff61c6e1a7b 0x7ff61c5dc878 0x7ff61c6e1c5e 0x7ff61c6ded3b 0x7ff61c6e5445 0x7ff61c6e5446 0x7ff61c7d6a07 0x7ff61c7304a3 0x7ff61c7305d3 0x7ff61c7d7512 0x7ff61c522de1
+#	0x7ff61c51a684	internal/poll.runtime_pollWait+0x84		C:/Program Files/Go/src/runtime/netpoll.go:351
+#	0x7ff61c5a0d46	internal/poll.(*pollDesc).wait+0x26		C:/Program Files/Go/src/internal/poll/fd_poll_runtime.go:84
+#	0x7ff61c5a208b	internal/poll.(*FD).waitIO+0x4b			C:/Program Files/Go/src/internal/poll/fd_windows.go:214
+#	0x7ff61c5a26e4	internal/poll.(*FD).execIO+0x364		C:/Program Files/Go/src/internal/poll/fd_windows.go:297
+#	0x7ff61c5a32ed	internal/poll.(*FD).Read+0x20d			C:/Program Files/Go/src/internal/poll/fd_windows.go:586
+#	0x7ff61c661984	net.(*netFD).Read+0x24				C:/Program Files/Go/src/net/fd_posix.go:68
+#	0x7ff61c6764c4	net.(*conn).Read+0x44				C:/Program Files/Go/src/net/net.go:196
+#	0x7ff61c6e1a7a	crypto/tls.(*atLeastReader).Read+0x3a		C:/Program Files/Go/src/crypto/tls/conn.go:815
+#	0x7ff61c5dc877	bytes.(*Buffer).ReadFrom+0x97			C:/Program Files/Go/src/bytes/buffer.go:229
+#	0x7ff61c6e1c5d	crypto/tls.(*Conn).readFromUntil+0xdd		C:/Program Files/Go/src/crypto/tls/conn.go:837
+#	0x7ff61c6ded3a	crypto/tls.(*Conn).readRecordOrCCS+0x3da	C:/Program Files/Go/src/crypto/tls/conn.go:626
+#	0x7ff61c6e5444	crypto/tls.(*Conn).readRecord+0x144		C:/Program Files/Go/src/crypto/tls/conn.go:588
+#	0x7ff61c6e5445	crypto/tls.(*Conn).Read+0x145			C:/Program Files/Go/src/crypto/tls/conn.go:1393
+#	0x7ff61c7d6a06	net/http.(*persistConn).Read+0x46		C:/Program Files/Go/src/net/http/transport.go:2174
+#	0x7ff61c7304a2	bufio.(*Reader).fill+0x102			C:/Program Files/Go/src/bufio/bufio.go:113
+#	0x7ff61c7305d2	bufio.(*Reader).Peek+0x52			C:/Program Files/Go/src/bufio/bufio.go:152
+#	0x7ff61c7d7511	net/http.(*persistConn).readLoop+0x171		C:/Program Files/Go/src/net/http/transport.go:2330
+
+1 @ 0x7ff61c51b54e 0x7ff61c4f8e85 0x7ff61c7d8ec6 0x7ff61c522de1
+#	0x7ff61c7d8ec5	net/http.(*persistConn).writeLoop+0xe5	C:/Program Files/Go/src/net/http/transport.go:2652
+
+1 @ 0x7ff61c51b54e 0x7ff61c4f8e85 0x7ff61c933dd6 0x7ff61c522de1
+#	0x7ff61c933dd5	github.com/golang/glog.(*fileSink).flushDaemon+0xb5	C:/Users/viadsmedia/go/pkg/mod/github.com/golang/glog@v1.2.4/glog_file.go:380
+

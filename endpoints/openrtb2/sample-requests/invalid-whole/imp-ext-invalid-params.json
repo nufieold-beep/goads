@@ -1,0 +1,27 @@
+{
+  "description": "Bid request's sole imp element has invalid ext value",
+  "config": {
+    "realParamsValidator": true
+  },
+  "mockBidRequest": {
+    "id": "req-id",
+    "imp": [
+      {
+        "id": "imp-id",
+        "audio": {
+          "mimes": [
+            "video/mp4"
+          ]
+        },
+        "ext": {
+          "appnexus": "invalidParams"
+        }
+      }
+    ],
+    "app": {
+      "id": "app_001"
+    }
+  },
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: request.imp[0].ext.prebid.bidder.appnexus failed validation.\n(root): Invalid type. Expected: object, given: string\n"
+}

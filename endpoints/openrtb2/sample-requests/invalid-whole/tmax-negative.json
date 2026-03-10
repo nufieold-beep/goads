@@ -1,0 +1,9 @@
+{
+  "description": "Bid request with negative tmax value. Expect error",
+  "mockBidRequest": {
+    "id": "req-id",
+    "tmax": -2
+  },
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: request.tmax must be nonnegative. Got -2\n"
+}

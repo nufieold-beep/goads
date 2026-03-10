@@ -1,0 +1,24 @@
+{
+  "description": "Banner specifies both w and wratio values, which is invalid",
+  "mockBidRequest": {
+    "id":"req-id",
+    "imp": [
+      {
+        "id": "imp-id",
+        "banner": {
+          "format": [
+            {
+              "w":30,
+              "wratio":23
+            }
+          ]
+        }
+      }
+    ],
+    "app": {
+      "id": "app_001"
+    }
+  },
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: Request imp[0].banner.format[0] should define *either* {w, h} *or* {wmin, wratio, hratio}, but not both. If both are valid, send two \"format\" objects in the request.\n"
+}

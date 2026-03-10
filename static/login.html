@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AdZrvr — Sign In</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#f1f5f9;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:20px;box-shadow:0 8px 40px rgba(0,0,0,.08);padding:40px 44px;width:100%;max-width:400px}
+.logo{display:flex;align-items:center;gap:12px;margin-bottom:32px;justify-content:center}
+.logo-icon{background:#6366f1;color:#fff;border-radius:12px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.logo-text{font-size:18px;font-weight:700;color:#0f172a;line-height:1.2}
+.logo-sub{font-size:12px;color:#64748b;font-weight:400}
+h1{font-size:22px;font-weight:700;color:#0f172a;text-align:center;margin-bottom:6px}
+.subtitle{font-size:13px;color:#64748b;text-align:center;margin-bottom:28px}
+.fg{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#64748b}
+input{background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;color:#0f172a;font-size:14px;padding:10px 13px;outline:none;transition:border-color .15s;width:100%}
+input:focus{border-color:#6366f1;background:#fff;box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+.btn{width:100%;background:#6366f1;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:600;padding:11px;cursor:pointer;transition:opacity .15s;margin-top:6px}
+.btn:hover{opacity:.88}
+.btn:active{opacity:.75}
+.err{display:none;background:rgba(220,38,38,.08);border:1px solid #fca5a5;color:#dc2626;border-radius:8px;padding:9px 13px;font-size:12.5px;margin-bottom:14px;text-align:center}
+.err.show{display:block}
+.footer{margin-top:28px;text-align:center;font-size:12px;color:#94a3b8}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-icon">&#11042;</div>
+    <div>
+      <div class="logo-text">Revenue Console</div>
+      <div class="logo-sub">AdZrvr Ad Server</div>
+    </div>
+  </div>
+  <h1>Welcome back</h1>
+  <p class="subtitle">Sign in to manage your ad inventory</p>
+
+  <div class="err" id="err-msg">Invalid username or password</div>
+
+  <form id="login-form" method="POST" action="/dashboard/login">
+    <div class="fg">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" placeholder="admin" autocomplete="username" required/>
+    </div>
+    <div class="fg">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required/>
+    </div>
+    <button type="submit" class="btn" id="login-btn">Sign In</button>
+  </form>
+
+  <div class="footer">AdZrvr Revenue Console &mdash; Admin Access</div>
+</div>
+
+<script>
+(function(){
+  // Show error if redirected with ?error=1
+  if(window.location.search.includes('error=1')){
+    document.getElementById('err-msg').classList.add('show');
+  }
+
+  // Submit via fetch for smoother UX (no page flicker on error)
+  document.getElementById('login-form').addEventListener('submit',async function(e){
+    e.preventDefault();
+    const btn=document.getElementById('login-btn');
+    const errEl=document.getElementById('err-msg');
+    errEl.classList.remove('show');
+    btn.textContent='Signing in…';
+    btn.disabled=true;
+    try{
+      const res=await fetch('/dashboard/login',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          username:document.getElementById('username').value,
+          password:document.getElementById('password').value
+        })
+      });
+      if(res.ok){
+        window.location.href='/dashboard';
+      } else {
+        errEl.classList.add('show');
+        btn.textContent='Sign In';
+        btn.disabled=false;
+        document.getElementById('password').value='';
+        document.getElementById('password').focus();
+      }
+    }catch(err){
+      errEl.textContent='Network error — please try again';
+      errEl.classList.add('show');
+      btn.textContent='Sign In';
+      btn.disabled=false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

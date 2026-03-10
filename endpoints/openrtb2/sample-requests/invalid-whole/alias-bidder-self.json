@@ -1,0 +1,31 @@
+{
+  "description": "Request with invalid alias in the root extension field",
+  "mockBidRequest": {
+    "id": "some-request-id",
+    "site": {
+      "page": "test.somepage.com"
+    },
+    "imp": [
+      {
+        "id": "my-imp-id",
+        "video": {
+          "mimes":["video/mp4"]
+        },
+        "ext": {
+          "appnexus": {
+            "placementId": 12883451
+          }
+        }
+      }
+    ],
+    "ext": {
+      "prebid": {
+        "aliases": {
+          "appnexus": "appnexus"
+        }
+      }
+    }
+  },
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: request.ext.prebid.aliases.appnexus defines a no-op alias. Choose a different alias, or remove this entry.\n"
+}

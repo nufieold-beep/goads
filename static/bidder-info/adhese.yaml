@@ -1,0 +1,14 @@
+endpoint: "https://ads-{{.AccountID}}.adhese.com/openrtb2"
+maintainer:
+  email: info@adhese.com
+gvlVendorID: 553
+modifyingVastXmlAllowed: true
+capabilities:
+  app:
+    mediaTypes:
+      - banner
+      - video
+  site:
+    mediaTypes:
+      - banner
+      - video

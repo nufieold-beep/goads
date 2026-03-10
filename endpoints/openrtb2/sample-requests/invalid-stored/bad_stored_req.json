@@ -1,0 +1,27 @@
+{
+  "description": "Valid request that uses stored request with extra curly brace so stored request is not valid JSON",
+  
+  "mockBidRequest": {
+    "id": "ThisID",
+    "imp": [
+      {
+        "ext": {
+          "prebid": {
+            "storedrequest": {
+              "id": "1"
+            }
+          }
+        }
+      }
+    ],
+    "ext": {
+      "prebid": {
+        "storedrequest": {
+          "id": "3"
+        }
+      }
+    }
+  },
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: expect { or n, but found"
+}

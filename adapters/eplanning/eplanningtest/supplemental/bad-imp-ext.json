@@ -1,0 +1,26 @@
+{
+  "mockBidRequest": {
+    "id": "test-request-id",
+    "imp": [
+      {
+        "id": "test-imp-id",
+        "banner": {
+            "w": 300,
+            "h": 250
+        },
+        "ext": {
+          "bidder": {
+            "ci": 12345,
+            "badadunit_code": "test_adunit"
+          }
+        }
+      }
+    ]
+  },
+  "expectedMakeRequestsErrors": [
+    {
+      "value": "Ignoring imp id=test-imp-id, error while decoding impExt, err: cannot unmarshal openrtb_ext.ExtImpEPlanning.ClientID: expects \" or n, but found 1",
+      "comparison": "literal"
+    }
+  ]
+}

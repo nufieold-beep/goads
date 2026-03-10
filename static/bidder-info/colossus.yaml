@@ -1,0 +1,18 @@
+endpoint: "http://colossusssp.com/?c=o&m=rtb"
+maintainer:
+  email: "support@colossusmediassp.com"
+capabilities:
+  app:
+    mediaTypes:
+      - banner
+      - video
+  site:
+    mediaTypes:
+      - banner
+      - video
+userSync:
+  redirect:
+    url: "https://sync.colossusssp.com/pbs.gif?gdpr={{.GDPR}}&gdpr_consent={{.GDPRConsent}}&us_privacy={{.USPrivacy}}&redir={{.RedirectURL}}"
+    userMacro: "[UID]"
+openrtb:
+  version: 2.6

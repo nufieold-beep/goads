@@ -1,0 +1,41 @@
+{
+  "description": "Otherwise valid request but without comma after first width field in first imp to yield invalid JSON, using stored imp request",
+  
+  "mockBidRequest": {
+    "id": "some-request-id",
+    "site": {
+      "page": "prebid.org"
+    },
+    "imp": [
+      {
+        "id": "some-impression-id",
+        "banner": {
+          "format": [
+            {
+              "w": 300
+              "h": 250
+            },
+            {
+              "w": 300,
+              "h": 600
+            }
+          ]
+        },
+        "ext": {
+          "rubicon": {
+            "siteId": 113910,
+            "zoneId": 434410
+          }
+          "prebid": {
+            "storedrequest": {
+              "id": "3"
+            }
+          }
+        }
+      }
+    ],
+    "tmax": 500
+  },
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: Invalid JSON Document"
+}

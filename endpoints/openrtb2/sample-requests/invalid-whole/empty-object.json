@@ -1,0 +1,6 @@
+{
+  "message": "Empty bid request, expect error",
+  "mockBidRequest": {},
+  "expectedReturnCode": 400,
+  "expectedErrorMessage": "Invalid request: request missing required field: \"id\"\n"
+}
