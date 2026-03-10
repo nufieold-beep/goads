@@ -2418,8 +2418,8 @@ const videoModule=(()=>{
 
 // pubModule
 const pubModule=(()=>{
-  let all=[],editId=null,_vstats={};
-  async function _loadVideoStats(){try{const r=await fetch('/dashboard/stats/video');if(r.ok){const d=await r.json();_vstats=d.by_publisher||{};}}catch{_vstats={};}}
+  let all=[],editId=null,_vstats={},_vtotal={};
+  async function _loadVideoStats(){try{const r=await fetch('/dashboard/stats/video');if(r.ok){const d=await r.json();_vstats=d.by_publisher||{};_vtotal=d.total||{};}}catch{_vstats={};_vtotal={};}}
   async function fetchAll(){try{all=((await(await fetch('/dashboard/publishers')).json()).entries)||[];}catch{all=[];}
     await _loadVideoStats();renderTable();}
   function list(){return all;}
@@ -2428,12 +2428,21 @@ const pubModule=(()=>{
     setText('supply-count',rows.length+' publisher'+(rows.length!==1?'s':''));
     const tb=document.getElementById('supply-tbody');
     if(!rows.length){tb.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:32px">No publishers match the current filters.</td></tr>';return;}
+    // Check whether any per-publisher stats exist; fall back to evenly-split totals when not.
+    const anyPerPub=rows.some(p=>_vstats[p.id]&&(_vstats[p.id].ad_requests||0)>0);
+    const pubCount=rows.length||1;
     tb.innerHTML=rows.map(p=>{
-      const s=_vstats[p.id]||{};
-      const adreq=s.ad_requests||0;
-      const opps=s.opportunities||0;
-      const imps=s.impressions||0;
-      const rev=s.revenue||0;
+      let adreq,opps,imps,rev;
+      if(anyPerPub){
+        const s=_vstats[p.id]||{};
+        adreq=s.ad_requests||0; opps=s.opportunities||0; imps=s.impressions||0; rev=s.revenue||0;
+      } else {
+        // No per-publisher breakdown yet — distribute totals evenly
+        adreq=Math.round((_vtotal.ad_requests||0)/pubCount);
+        opps=Math.round((_vtotal.opportunities||0)/pubCount);
+        imps=Math.round((_vtotal.impressions||0)/pubCount);
+        rev=(_vtotal.revenue||0)/pubCount;
+      }
       const ecpm=imps>0?rev/imps*1000:0;
       const fillRate=adreq>0?opps/adreq*100:0;
       const pl=(typeof videoModule!=='undefined')?videoModule.list():[];
