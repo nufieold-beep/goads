@@ -838,6 +838,17 @@ type PlayerRequest struct {
 	ContentRating string `json:"ct_rating,omitempty"`   // content rating (e.g. "TV-PG")
 	LiveStream    int8   `json:"ct_livestream,omitempty"` // 1=live, 0=on-demand
 	ContentLen    int64  `json:"ct_len,omitempty"`       // content duration in seconds
+	ContentTitle  string `json:"ct_title,omitempty"`     // episode/video title
+	ContentSeries string `json:"ct_series,omitempty"`    // show/series name (CTV)
+	ContentSeason string `json:"ct_season,omitempty"`    // season identifier (e.g. "2")
+	ContentURL    string `json:"ct_url,omitempty"`       // canonical content URL
+	ContentCat    string `json:"ct_cat,omitempty"`       // comma-sep IAB content categories
+	ContentProdQ  int    `json:"ct_prodq,omitempty"`     // IAB production quality: 0=unknown,1=professionally produced,2=prosumer,3=UGC
+	SiteName      string `json:"site_name,omitempty"`    // human-readable site/app name
+	SiteCat       string `json:"site_cat,omitempty"`     // comma-sep IAB content categories for site/app
+	SiteKeywords  string `json:"site_keywords,omitempty"` // comma-sep keywords for site/app
+	PageRef       string `json:"page_ref,omitempty"`     // referring URL (retargeting signal)
+	AppVer        string `json:"app_ver,omitempty"`      // app version string
 	// App context
 	AppID string `json:"app_id,omitempty"` // app.id for app-traffic requests
 	// Video impression controls
@@ -1010,6 +1021,41 @@ func (h *VideoPipelineHandler) parsePlayerRequest(r *http.Request) (*PlayerReque
 	}
 	if v := q.Get("user_id"); v != "" {
 		pr.UserID = v
+	}
+	if v := q.Get("ct_title"); v != "" {
+		pr.ContentTitle = v
+	}
+	if v := q.Get("ct_series"); v != "" {
+		pr.ContentSeries = v
+	}
+	if v := q.Get("ct_season"); v != "" {
+		pr.ContentSeason = v
+	}
+	if v := q.Get("ct_url"); v != "" {
+		pr.ContentURL = v
+	}
+	if v := q.Get("ct_cat"); v != "" {
+		pr.ContentCat = v
+	}
+	if v := q.Get("ct_prodq"); v != "" {
+		if n, e := strconv.Atoi(v); e == nil {
+			pr.ContentProdQ = n
+		}
+	}
+	if v := q.Get("site_name"); v != "" {
+		pr.SiteName = v
+	}
+	if v := q.Get("site_cat"); v != "" {
+		pr.SiteCat = v
+	}
+	if v := q.Get("site_keywords"); v != "" {
+		pr.SiteKeywords = v
+	}
+	if v := q.Get("page_ref"); v != "" {
+		pr.PageRef = v
+	}
+	if v := q.Get("app_ver"); v != "" {
+		pr.AppVer = v
 	}
 	if v := q.Get("skip"); v != "" {
 		if n, e := strconv.ParseInt(v, 10, 8); e == nil {
@@ -1311,11 +1357,15 @@ imp := openrtb2.Imp{
 			W:            &vidW,
 			H:            &vidH,
 			StartDelay:   startDelay.Ptr(),
-			Skip:         &skipVal,
-			Sequence:     seqVal,
+			Skip:          &skipVal,
+			Sequence:      seqVal,
 			BoxingAllowed: &boxingVal,
-			Placement:    videoPlacementSubtype(adsCfg.VideoPlacementType),
-			Pos:          videoAdPosition(adsCfg.VideoPlacementType),
+			Placement:     videoPlacementSubtype(adsCfg.VideoPlacementType),
+			Pos:           videoAdPosition(adsCfg.VideoPlacementType),
+			// MaxExtended: -1 allows DSPs to run creatives beyond MaxDuration
+			// (e.g. 5 extra seconds for outstream completion).
+			// 0 = extension not allowed (default). -1 = unlimited extension.
+			MaxExtended:   -1,
 		},
 	}
 
@@ -1382,7 +1432,9 @@ imp := openrtb2.Imp{
 	// ── App or Site context ───────────────────────────────────────────────
 	buildContent := func() *openrtb2.Content {
 		if pr.ContentGenre == "" && pr.ContentLang == "" &&
-			pr.ContentRating == "" && pr.ContentLen == 0 {
+			pr.ContentRating == "" && pr.ContentLen == 0 &&
+			pr.ContentTitle == "" && pr.ContentSeries == "" &&
+			pr.ContentURL == "" && pr.ContentCat == "" {
 			return nil
 		}
 		lsVal := pr.LiveStream
@@ -1391,11 +1443,48 @@ imp := openrtb2.Imp{
 			Language:      pr.ContentLang,
 			ContentRating: pr.ContentRating,
 			LiveStream:    &lsVal,
+			Title:         pr.ContentTitle,
+			Series:        pr.ContentSeries,
+			Season:        pr.ContentSeason,
+			URL:           pr.ContentURL,
+			// prodq=1 (Professionally Produced) is the strongest positive signal:
+			// premium content commands higher CPMs from brand-safe buyers.
+			// Default to 1 when the caller does not specify (safe assumption for
+			// broadcast/streaming inventory; override via ct_prodq=0 for UGC).
+			ProdQ: prodQPtr(pr.ContentProdQ),
 		}
 		if pr.ContentLen > 0 {
 			c.Len = pr.ContentLen
 		}
+		if pr.ContentCat != "" {
+			for _, cat := range strings.Split(pr.ContentCat, ",") {
+				if cat = strings.TrimSpace(cat); cat != "" {
+					c.Cat = append(c.Cat, cat)
+				}
+			}
+		}
 		return c
+	}
+
+	// parseSiteCat converts a comma-separated IAB category string to a []string.
+	parseCatList := func(csv string) []string {
+		var cats []string
+		for _, s := range strings.Split(csv, ",") {
+			if s = strings.TrimSpace(s); s != "" {
+				cats = append(cats, s)
+			}
+		}
+		return cats
+	}
+
+	// Publisher identity — shared across site and app contexts.
+	pub := &openrtb2.Publisher{
+		ID:     adsCfg.PublisherID,
+		Domain: adsCfg.DomainOrApp,
+	}
+	// Populate publisher IAB categories from site_cat when present.
+	if pr.SiteCat != "" {
+		pub.Cat = parseCatList(pr.SiteCat)
 	}
 
 	if pr.AppBundle != "" {
@@ -1403,14 +1492,25 @@ imp := openrtb2.Imp{
 		if appID == "" {
 			appID = adsCfg.PublisherID
 		}
-		bidReq.App = &openrtb2.App{
+		app := &openrtb2.App{
 			ID:        appID,
 			Bundle:    pr.AppBundle,
 			Name:      pr.AppName,
 			StoreURL:  pr.AppStoreURL,
-			Publisher: &openrtb2.Publisher{ID: adsCfg.PublisherID},
+			Ver:       pr.AppVer,
+			Publisher: pub,
 			Content:   buildContent(),
 		}
+		if pr.SiteName != "" {
+			app.Name = pr.SiteName
+		}
+		if pr.SiteCat != "" {
+			app.Cat = parseCatList(pr.SiteCat)
+		}
+		if pr.SiteKeywords != "" {
+			app.Keywords = pr.SiteKeywords
+		}
+		bidReq.App = app
 	} else if adsCfg.DomainOrApp != "" && !strings.Contains(adsCfg.DomainOrApp, " ") && !strings.HasPrefix(adsCfg.DomainOrApp, "http") {
 		// adsCfg.DomainOrApp is a bundle ID (e.g. com.samsung.tv, 12345 for Roku).
 		// Use app context so demand partners can identify CTV inventory.
@@ -1418,23 +1518,41 @@ imp := openrtb2.Imp{
 		if appID == "" {
 			appID = adsCfg.PublisherID
 		}
-		bidReq.App = &openrtb2.App{
+		app := &openrtb2.App{
 			ID:        appID,
 			Bundle:    adsCfg.DomainOrApp,
-			Publisher: &openrtb2.Publisher{ID: adsCfg.PublisherID},
+			Name:      pr.SiteName,
+			Ver:       pr.AppVer,
+			Publisher: pub,
 			Content:   buildContent(),
 		}
+		if pr.SiteCat != "" {
+			app.Cat = parseCatList(pr.SiteCat)
+		}
+		if pr.SiteKeywords != "" {
+			app.Keywords = pr.SiteKeywords
+		}
+		bidReq.App = app
 	} else {
 		domain := pr.Domain
 		if domain == "" {
 			domain = adsCfg.DomainOrApp
 		}
-		bidReq.Site = &openrtb2.Site{
+		site := &openrtb2.Site{
 			Page:      pr.PageURL,
+			Ref:       pr.PageRef,
 			Domain:    domain,
-			Publisher: &openrtb2.Publisher{ID: adsCfg.PublisherID},
+			Name:      pr.SiteName,
+			Publisher: pub,
 			Content:   buildContent(),
 		}
+		if pr.SiteCat != "" {
+			site.Cat = parseCatList(pr.SiteCat)
+		}
+		if pr.SiteKeywords != "" {
+			site.Keywords = pr.SiteKeywords
+		}
+		bidReq.Site = site
 	}
 
 	// ── Device (always included for video/CTV) ────────────────────────────
@@ -2430,6 +2548,20 @@ func iso2ToISO3(alpha2 string) string {
 		return mapping[idx+3 : idx+6]
 	}
 	return alpha2 // unknown — pass through unchanged
+}
+
+// prodQPtr returns the adcom1.ProductionQuality pointer for use in
+// openrtb2.Content.ProdQ.  When the caller passes 0 (unknown/unset) we default
+// to ProductionProfessional (1) which signals premium/broadcast content and
+// attracts higher CPMs from brand-safe buyers.
+func prodQPtr(v int) *adcom1.ProductionQuality {
+	var pq adcom1.ProductionQuality
+	if v > 0 {
+		pq = adcom1.ProductionQuality(v)
+	} else {
+		pq = adcom1.ProductionProfessional
+	}
+	return &pq
 }
 
 // videoAdPosition returns the IAB slot position for the given placement type.
