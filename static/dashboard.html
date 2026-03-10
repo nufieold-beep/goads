@@ -2483,15 +2483,16 @@ const advModule=(()=>{
     const tb=document.getElementById('demand-tbody');
     if(!rows.length){tb.innerHTML='<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:32px">No advertisers match the current filters.</td></tr>';return;}
     const camps=(typeof campModule!=='undefined')?campModule.list():[];
-    // Distribute total video stats evenly across advertisers as a best approximation
+    // Distribute total video stats across advertisers weighted by campaign count.
+    // When no campaigns exist, split evenly so each partner gets 1/N share.
     const advCount=rows.length||1;
     const totalAdReq=_vstats.ad_requests||0;
     const totalOpps=_vstats.opportunities||0;
     const totalImps=_vstats.impressions||0;
     const totalRev=_vstats.revenue||0;
     tb.innerHTML=rows.map(a=>{
-      const cc=camps.filter(c=>c.advertiser_id===a.id).length||1;
-      const share=cc/((camps.length)||1);
+      const cc=camps.filter(c=>c.advertiser_id===a.id).length;
+      const share=camps.length>0?cc/camps.length:1/advCount;
       const br=Math.round(totalAdReq*share);
       const bids=Math.round(totalOpps*share);
       const imps=Math.round(totalImps*share);
