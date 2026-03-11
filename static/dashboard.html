@@ -2155,8 +2155,6 @@ async function updateOverview(){
   const sc=document.getElementById('skel-chart');if(sc)sc.style.display='none';
   // Chart
   ovBuildChart(cur.reqs,cur.fills,cur.imps,hoursCur);
-  // Async: load exchange optimization status
-  _loadXoptStatus();
 }
 
 function ovBuildChart(reqs,fills,imps,hours){
