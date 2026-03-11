@@ -48,6 +48,7 @@ import (
 	"github.com/prebid/prebid-server/v4/exchange"
 	"github.com/prebid/prebid-server/v4/hooks/hookexecution"
 	"github.com/prebid/prebid-server/v4/metrics"
+	cleanrtb "github.com/prebid/prebid-server/v4/openrtb"
 	"github.com/prebid/prebid-server/v4/openrtb_ext"
 	"github.com/prebid/prebid-server/v4/util/jsonutil"
 )
@@ -1942,9 +1943,11 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 
 	bidFloor := adsCfg.FloorCPM
 	imp := openrtb2.Imp{
-		ID:          impID,
-		BidFloor:    bidFloor,
-		BidFloorCur: "USD",
+		ID:                impID,
+		DisplayManager:    "GoAds",
+		DisplayManagerVer: "1.0",
+		BidFloor:          bidFloor,
+		BidFloorCur:       "USD",
 		Secure:      &secureVal,
 		Video: &openrtb2.Video{
 			MIMEs:         resolveMimeTypes(adsCfg.MimeTypes),
@@ -2230,6 +2233,11 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 	}
 	bidReq.User = user
 
+	// ── Source (transaction ID for bid dedup + supply chain) ──────────────
+	bidReq.Source = &openrtb2.Source{
+		TID: auctionID,
+	}
+
 	return bidReq
 }
 
@@ -2392,7 +2400,8 @@ func (h *VideoPipelineHandler) postToDemandORTB(
 	adsCfg *AdServerConfig,
 ) (*openrtb2.BidResponse, error) {
 	bidReq := h.buildOpenRTBRequest(pr, adsCfg)
-	body, err := json.Marshal(bidReq)
+	cleanReq := cleanrtb.FromPrebidRequest(bidReq)
+	body, err := json.Marshal(cleanReq)
 	if err != nil {
 		return nil, fmt.Errorf("marshal OpenRTB request: %w", err)
 	}
