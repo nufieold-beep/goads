@@ -946,11 +946,11 @@ func SetupViper(v *viper.Viper, filename string, bidderInfos BidderInfos) {
 	v.SetDefault("unix_socket_name", "prebid-server.sock") // path of the socket's file which must be listened.
 	v.SetDefault("admin_port", 6060)
 	v.SetDefault("admin.enabled", true) // boolean to determine if admin listener will be started.
-	v.SetDefault("garbage_collector_threshold", 0)
+	v.SetDefault("garbage_collector_threshold", 200000000)
 	v.SetDefault("status_response", "")
 	v.SetDefault("datacenter", "")
-	v.SetDefault("auction_timeouts_ms.default", 0)
-	v.SetDefault("auction_timeouts_ms.max", 0)
+	v.SetDefault("auction_timeouts_ms.default", 300)
+	v.SetDefault("auction_timeouts_ms.max", 3000)
 	v.SetDefault("cache.scheme", "")
 	v.SetDefault("cache.host", "")
 	v.SetDefault("cache.query", "")

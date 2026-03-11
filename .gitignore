@@ -67,3 +67,10 @@ prebid-server.iml
 *~
 *.swp
 *.swo
+
+# Temporary deployment/test artefacts — may contain credentials or binaries
+tmp_*
+*.b64
+
+# Data directory (runtime state, sessions, stats)
+/data/

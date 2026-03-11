@@ -3,11 +3,13 @@ package endpoints
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -162,18 +164,18 @@ func NewDashboardStatsHandler(metricsEngine *metricsConf.DetailedMetricsEngine) 
 func NewExtStatsFetchHandler() httprouter.Handle {
 	client := &http.Client{Timeout: 15 * time.Second}
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-		var req struct {
+		var proxyRequest struct {
 			URL string `json:"url"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&proxyRequest); err != nil {
 			http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
 			return
 		}
-		if !strings.HasPrefix(req.URL, "https://") {
+		if !strings.HasPrefix(proxyRequest.URL, "https://") {
 			http.Error(w, `{"error":"only https:// URLs are allowed"}`, http.StatusBadRequest)
 			return
 		}
-		resp, err := client.Get(req.URL)
+		resp, err := client.Get(proxyRequest.URL)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadGateway)
@@ -352,7 +354,7 @@ func NewDashboardLoginPostHandler() httprouter.Handle {
 		dashSessionsMu.Lock()
 		dashSessions[token] = time.Now().Add(dashSessionTTL)
 		dashSessionsMu.Unlock()
-		go saveDashSessions()
+		safeGo(saveDashSessions)
 		isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 		sameSite := http.SameSiteLaxMode
 		if isSecure {
@@ -383,7 +385,7 @@ func NewDashboardLogoutHandler() httprouter.Handle {
 			dashSessionsMu.Lock()
 			delete(dashSessions, c.Value)
 			dashSessionsMu.Unlock()
-			go saveDashSessions()
+			safeGo(saveDashSessions)
 		}
 		http.SetCookie(w, &http.Cookie{
 			Name:     dashSessionCookie,
@@ -600,13 +602,18 @@ type VideoExchangeEntry struct {
 	// Ad pod configuration (CTV)
 	PodDurationSec int `json:"pod_duration_sec,omitempty"`
 	MaxPods        int `json:"max_pods,omitempty"`
+	PodSequence    int `json:"pod_sequence,omitempty"`
+
+	// CTV companion & taxonomy
+	CompanionType []int  `json:"companion_type,omitempty"` // 1=Static, 2=HTML, 3=iframe
+	CatTax        int    `json:"cattax,omitempty"`          // IAB category taxonomy version
+	SellerDomain  string `json:"seller_domain,omitempty"`   // schain ASI domain for this exchange
 
 	// Integration & source settings
 	IntegrationType string `json:"integration_type,omitempty"` // "tag_based"|"open_rtb"
 
 	// Source pricing
-	PricingType string  `json:"pricing_type,omitempty"`  // "fixed_cpm"|"share_revenue"|"floor_price"
-	RevShare    float64 `json:"rev_share,omitempty"`     // 0–100 %
+	PricingType string  `json:"pricing_type,omitempty"`  // "fixed_cpm"|"floor_price"
 	AdvFloorCPM float64 `json:"adv_floor_cpm,omitempty"` // advertiser's floor CPM
 
 	// Exchange controls
@@ -720,9 +727,10 @@ func dataStorePath(dataDir, filename string) string {
 
 // VideoExchangeHandler owns the store and exposes five httprouter.Handle methods.
 type VideoExchangeHandler struct {
-	store       *VideoExchangeStore
-	campStore   *campaignStore        // resolved lazily via SetCampaignStore
-	registerCfg func(*AdServerConfig) // pipline config hook; set via SetPipelineRegister
+	store         *VideoExchangeStore
+	campStore     *campaignStore        // resolved lazily via SetCampaignStore
+	registerCfg   func(*AdServerConfig) // pipline config hook; set via SetPipelineRegister
+	unregisterCfg func(string)          // pipeline config removal hook; set via SetPipelineUnregister
 }
 
 // NewVideoExchangeHandler creates a VideoExchangeHandler backed by a persistent store.
@@ -736,6 +744,9 @@ func (h *VideoExchangeHandler) SetCampaignStore(s *campaignStore) { h.campStore 
 
 // SetPipelineRegister injects the callback used to push AdServerConfig into the pipeline.
 func (h *VideoExchangeHandler) SetPipelineRegister(fn func(*AdServerConfig)) { h.registerCfg = fn }
+
+// SetPipelineUnregister injects the callback used to remove AdServerConfig from the pipeline.
+func (h *VideoExchangeHandler) SetPipelineUnregister(fn func(string)) { h.unregisterCfg = fn }
 
 // SyncAllToPipeline pushes every ad unit that was loaded from disk into the pipeline
 // config store.  Must be called once from router setup after both SetCampaignStore and
@@ -765,8 +776,13 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 		CampaignID:     e.CampaignID,
 		Active:         e.Active,
 		TimeoutMS:      e.TimeoutMS,
+		PodDuration:    e.PodDurationSec,
+		MaxSeq:         e.MaxPods,
+		PodSequence:    e.PodSequence,
+		CompanionType:  e.CompanionType,
+		CatTax:         e.CatTax,
+		SellerDomain:   e.SellerDomain,
 	}
-	// Populate the ad unit's placement type for ORTB imp.video.placement.
 	cfg.VideoPlacementType = string(e.Placement)
 
 	// Resolve linked Campaign demand endpoint and settings.
@@ -895,6 +911,9 @@ func (h *VideoExchangeHandler) Delete() httprouter.Handle {
 		if !h.store.delete(id) {
 			writeError(w, http.StatusNotFound, "entry not found: "+id)
 			return
+		}
+		if h.unregisterCfg != nil {
+			h.unregisterCfg(id)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -1090,7 +1109,7 @@ func (s *entityStore[E]) create(e E) E {
 	s.mu.Lock()
 	s.entries[e.getID()] = e
 	s.mu.Unlock()
-	go s.save()
+	safeGo(s.save)
 	return e
 }
 
@@ -1106,7 +1125,7 @@ func (s *entityStore[E]) update(id string, patch E) (E, bool) {
 	patch.setTimestamps(existing.getCreatedAt(), time.Now().UTC())
 	s.entries[id] = patch
 	s.mu.Unlock()
-	go s.save()
+	safeGo(s.save)
 	return patch, true
 }
 
@@ -1118,7 +1137,7 @@ func (s *entityStore[E]) delete(id string) bool {
 	}
 	s.mu.Unlock()
 	if ok {
-		go s.save()
+		safeGo(s.save)
 	}
 	return ok
 }
@@ -1212,7 +1231,7 @@ func (s *entityStore[E]) modifyFn(id string, fn func(E)) (E, bool) {
 	fn(e)
 	e.setTimestamps(e.getCreatedAt(), time.Now().UTC())
 	s.mu.Unlock()
-	go s.save()
+	safeGo(s.save)
 	return e, true
 }
 
@@ -1552,7 +1571,7 @@ func (h *CampaignHandler) Update() httprouter.Handle {
 			return
 		}
 		if h.onChange != nil {
-			go h.onChange()
+			safeGo(h.onChange)
 		}
 		writeJSON(w, http.StatusOK, updated)
 	}
@@ -1565,7 +1584,7 @@ func (h *CampaignHandler) Delete() httprouter.Handle {
 			return
 		}
 		if h.onChange != nil {
-			go h.onChange()
+			safeGo(h.onChange)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -1719,9 +1738,6 @@ type YieldRule struct {
 	// CPM controls
 	FloorCPM  float64 `json:"floor_cpm"`
 	TargetCPM float64 `json:"target_cpm,omitempty"` // soft optimisation target
-
-	// Revenue share (publisher payout %)
-	RevShare float64 `json:"rev_share,omitempty"`
 
 	// Waterfall / auction controls
 	WaterfallPos int    `json:"waterfall_pos,omitempty"`
@@ -2353,6 +2369,23 @@ func NewSupplyPartnerHandler(dataDir string) *SupplyPartnerHandler {
 // each supply partner record keyed by partner ID == publisher_id.
 func (h *SupplyPartnerHandler) SetStatsProvider(fn func() VideoStatsPayload) { h.statsProvider = fn }
 
+func statsWindowSeconds(startedAt int64) (dayWindowSeconds, hourWindowSeconds int64) {
+	nowUnix := time.Now().Unix()
+	uptimeSeconds := nowUnix - startedAt
+	if uptimeSeconds < 1 {
+		uptimeSeconds = 1
+	}
+	dayWindowSeconds = uptimeSeconds
+	if dayWindowSeconds > 86400 {
+		dayWindowSeconds = 86400
+	}
+	hourWindowSeconds = uptimeSeconds
+	if hourWindowSeconds > 3600 {
+		hourWindowSeconds = 3600
+	}
+	return dayWindowSeconds, hourWindowSeconds
+}
+
 // List handles GET /dashboard/supply-partners.
 // When a statsProvider is wired it overlays live pipeline metrics onto each
 // record so the Revenue Console always shows up-to-date numbers without a
@@ -2362,19 +2395,7 @@ func (h *SupplyPartnerHandler) List() httprouter.Handle {
 		entries := h.store.list()
 		if h.statsProvider != nil {
 			snap := h.statsProvider()
-			now := time.Now().Unix()
-			uptime := now - snap.StartedAt
-			if uptime < 1 {
-				uptime = 1
-			}
-			dayW := uptime
-			if dayW > 86400 {
-				dayW = 86400
-			}
-			hourW := uptime
-			if hourW > 3600 {
-				hourW = 3600
-			}
+			dayWindowSeconds, hourWindowSeconds := statsWindowSeconds(snap.StartedAt)
 			for _, e := range entries {
 				if vs := snap.ByPublisher[e.ID]; vs != nil {
 					// Overlay live metrics; preserve CRUD-managed fields (name, status, …)
@@ -2382,8 +2403,8 @@ func (h *SupplyPartnerHandler) List() httprouter.Handle {
 					e.GrossRevenue = vs.Revenue
 					e.Impressions = vs.Impressions
 					e.Completions = vs.Completes
-					e.AvgQpsYesterday = vs.AdRequests / dayW
-					e.AvgQpsLastHour = vs.AdRequests / hourW
+					e.AvgQpsYesterday = vs.AdRequests / dayWindowSeconds
+					e.AvgQpsLastHour = vs.AdRequests / hourWindowSeconds
 				}
 			}
 		}
@@ -2528,19 +2549,7 @@ func (h *DemandPartnerHandler) List() httprouter.Handle {
 		entries := h.store.list()
 		if h.statsProvider != nil {
 			snap := h.statsProvider()
-			now := time.Now().Unix()
-			uptime := now - snap.StartedAt
-			if uptime < 1 {
-				uptime = 1
-			}
-			dayW := uptime
-			if dayW > 86400 {
-				dayW = 86400
-			}
-			hourW := uptime
-			if hourW > 3600 {
-				hourW = 3600
-			}
+			dayWindowSeconds, hourWindowSeconds := statsWindowSeconds(snap.StartedAt)
 			for _, e := range entries {
 				if vs := snap.ByAdvertiser[e.ID]; vs != nil {
 					// Bid requests = ad_requests seen by this advertiser/demand partner.
@@ -2551,8 +2560,8 @@ func (h *DemandPartnerHandler) List() httprouter.Handle {
 					e.GrossRevenue = vs.Revenue
 					e.Payout = vs.Revenue // Payout = Gross Revenue
 					e.Completions = vs.Completes
-					e.AvgQpsYesterday = vs.AdRequests / dayW
-					e.AvgQpsLastHour = vs.AdRequests / hourW
+					e.AvgQpsYesterday = vs.AdRequests / dayWindowSeconds
+					e.AvgQpsLastHour = vs.AdRequests / hourWindowSeconds
 				}
 			}
 		}
@@ -2688,6 +2697,27 @@ func NewBidReportHandler(dataDir string) *BidReportHandler {
 	return &BidReportHandler{store: newBidReportStore(dataStorePath(dataDir, "bid_reports.json"))}
 }
 
+func isAuthorizedBidReportWrite(r *http.Request) bool {
+	if key := os.Getenv("DASH_REPORT_API_KEY"); key != "" {
+		provided := r.Header.Get("X-Dashboard-Report-Key")
+		if provided == "" {
+			if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+				provided = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+			}
+		}
+		return subtle.ConstantTimeCompare([]byte(provided), []byte(key)) == 1
+	}
+	if isValidDashSession(r) {
+		return true
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(strings.TrimSpace(host))
+	return ip != nil && ip.IsLoopback()
+}
+
 // List handles GET /dashboard/reports.
 // Supports server-side filtering via query params:
 // campaign_id, adomain, crid, bidder, event_type, publisher_id, ad_unit_id.
@@ -2750,6 +2780,10 @@ func (h *BidReportHandler) List() httprouter.Handle {
 // Push handles POST /dashboard/reports — pushes a single event record.
 func (h *BidReportHandler) Push() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		if !isAuthorizedBidReportWrite(r) {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
 		var e BidReportEntry
 		if !decodeBody(w, r, &e) {
 			return
@@ -2765,6 +2799,10 @@ func (h *BidReportHandler) Push() httprouter.Handle {
 // BulkPush handles POST /dashboard/reports/bulk — pushes a slice of event records.
 func (h *BidReportHandler) BulkPush() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		if !isAuthorizedBidReportWrite(r) {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
 		var entries []*BidReportEntry
 		if !decodeBody(w, r, &entries) {
 			return
@@ -2851,9 +2889,10 @@ func (reg *DashboardRegistry) WireVideoStats(snap func() VideoStatsPayload) {
 // and the campaign store into the VideoExchange handler, then syncs all
 // placements loaded from disk back into the pipeline.
 // Call after videoPipeline is constructed and before Register.
-func (reg *DashboardRegistry) WireVideoExchange(registerCfg func(*AdServerConfig)) {
+func (reg *DashboardRegistry) WireVideoExchange(registerCfg func(*AdServerConfig), unregisterCfg func(string)) {
 	reg.VideoExchange.SetCampaignStore(reg.Campaign.Store())
 	reg.VideoExchange.SetPipelineRegister(registerCfg)
+	reg.VideoExchange.SetPipelineUnregister(unregisterCfg)
 	reg.VideoExchange.SyncAllToPipeline()
 	// Re-sync all placements whenever a campaign URL changes.
 	reg.Campaign.SetOnChange(reg.VideoExchange.SyncAllToPipeline)

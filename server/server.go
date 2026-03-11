@@ -103,8 +103,12 @@ func Listen(cfg *config.Configuration, handler http.Handler, adminHandler http.H
 }
 
 func newAdminServer(cfg *config.Configuration, handler http.Handler) *http.Server {
+	host := cfg.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
 	return &http.Server{
-		Addr:    cfg.Host + ":" + strconv.Itoa(cfg.AdminPort),
+		Addr:    host + ":" + strconv.Itoa(cfg.AdminPort),
 		Handler: handler,
 	}
 }
@@ -115,11 +119,11 @@ func newMainServer(cfg *config.Configuration, handler http.Handler) *http.Server
 	return &http.Server{
 		Addr:              cfg.Host + ":" + strconv.Itoa(cfg.Port),
 		Handler:           serverHandler,
-		ReadHeaderTimeout: 3 * time.Second, // guard against Slowloris
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       120 * time.Second, // keep connections warm between bursts
-		MaxHeaderBytes:    1 << 16,           // 64 KB — prevents large-header amplification
+		ReadHeaderTimeout: 2 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 15, // 32 KB
 	}
 
 }
@@ -128,10 +132,17 @@ func newFastHTTPServer(handler http.Handler, compressionInfo config.CompressionI
 	wrapped := getCompressionEnabledHandler(handler, compressionInfo)
 	return &fasthttp.Server{
 		Handler:            fasthttpadaptor.NewFastHTTPHandler(wrapped),
-		ReadTimeout:        15 * time.Second,
-		WriteTimeout:       15 * time.Second,
+		ReadTimeout:        10 * time.Second,
+		WriteTimeout:       10 * time.Second,
 		IdleTimeout:        120 * time.Second,
-		MaxRequestBodySize: 10 << 20, // 10MB guard
+		MaxRequestBodySize: 2 << 20, // 2 MB — ad requests are small
+		Concurrency:        16384,   // max concurrent connections
+		ReadBufferSize:     8192,
+		WriteBufferSize:    8192,
+		DisableKeepalive:   false,
+		TCPKeepalive:       true,
+		TCPKeepalivePeriod: 30 * time.Second,
+		ReduceMemoryUsage:  false,
 	}
 }
 

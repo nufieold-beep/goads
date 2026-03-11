@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prebid/go-gdpr/vendorlist"
 	openrtb2model "github.com/prebid/openrtb/v20/openrtb2"
 	analyticsBuild "github.com/prebid/prebid-server/v4/analytics/build"
 	"github.com/prebid/prebid-server/v4/config"
@@ -24,7 +25,6 @@ import (
 	"github.com/prebid/prebid-server/v4/experiment/adscert"
 	"github.com/prebid/prebid-server/v4/floors"
 	"github.com/prebid/prebid-server/v4/gdpr"
-	"github.com/prebid/go-gdpr/vendorlist"
 	"github.com/prebid/prebid-server/v4/hooks"
 	"github.com/prebid/prebid-server/v4/logger"
 	"github.com/prebid/prebid-server/v4/macros"
@@ -116,6 +116,33 @@ func (m NoCache) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.Handler.ServeHTTP(w, r)
 }
 
+// rateLimiter implements a simple in-process token-bucket rate limiter.
+// It caps the number of concurrent in-flight requests to protect the server
+// from overload. Rejected requests receive 429 Too Many Requests.
+type rateLimiter struct {
+	sem  chan struct{}
+	next httprouter.Handle
+}
+
+func newRateLimiter(maxConcurrent int, next httprouter.Handle) httprouter.Handle {
+	if maxConcurrent <= 0 {
+		return next
+	}
+	rl := &rateLimiter{sem: make(chan struct{}, maxConcurrent), next: next}
+	return rl.handle
+}
+
+func (rl *rateLimiter) handle(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	select {
+	case rl.sem <- struct{}{}:
+		defer func() { <-rl.sem }()
+		rl.next(w, r, ps)
+	default:
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+	}
+}
+
 type Router struct {
 	*httprouter.Router
 	MetricsEngine   *metricsConf.DetailedMetricsEngine
@@ -138,7 +165,7 @@ func (r *Router) ListenAndServe(addr string) error {
 	return fasthttp.ListenAndServe(addr, r.FastHTTPHandler())
 }
 
-func New(cfg *config.Configuration, rateConvertor *currency.RateConverter) (r *Router, err error) {
+func New(cfg *config.Configuration, rateConverter *currency.RateConverter) (r *Router, err error) {
 	const schemaDirectory = "./static/bidder-params"
 
 	r = &Router{
@@ -190,7 +217,7 @@ func New(cfg *config.Configuration, rateConvertor *currency.RateConverter) (r *R
 		},
 	}
 
-	floorFechterHttpClient := &http.Client{
+	floorFetcherHTTPClient := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: defaultTransportDialContext(&net.Dialer{
@@ -225,7 +252,7 @@ func New(cfg *config.Configuration, rateConvertor *currency.RateConverter) (r *R
 	}
 
 	normalizedGeoscopes := getNormalizedGeoscopes(cfg.BidderInfos)
-	moduleDeps := moduledeps.ModuleDeps{HTTPClient: generalHttpClient, RateConvertor: rateConvertor, Geoscope: normalizedGeoscopes}
+	moduleDeps := moduledeps.ModuleDeps{HTTPClient: generalHttpClient, RateConvertor: rateConverter, Geoscope: normalizedGeoscopes}
 	repo, moduleStageNames, shutdownModules, err := modules.NewBuilder().Build(cfg.Hooks.Modules, moduleDeps)
 	if err != nil {
 		logger.Fatalf("Failed to init hook modules: %v", err)
@@ -281,12 +308,12 @@ func New(cfg *config.Configuration, rateConvertor *currency.RateConverter) (r *R
 	}
 
 	requestValidator := ortb.NewRequestValidator(activeBidders, disabledBidders, paramsValidator)
-	priceFloorFetcher := floors.NewPriceFloorFetcher(cfg.PriceFloors, floorFechterHttpClient, r.MetricsEngine)
+	priceFloorFetcher := floors.NewPriceFloorFetcher(cfg.PriceFloors, floorFetcherHTTPClient, r.MetricsEngine)
 
 	tmaxAdjustments := exchange.ProcessTMaxAdjustments(cfg.TmaxAdjustments)
 	planBuilder := hooks.NewExecutionPlanBuilder(cfg.Hooks, repo)
 	macroReplacer := macros.NewStringIndexBasedReplacer()
-	theExchange := exchange.NewExchange(adapters, cacheClient, cfg, requestValidator, syncersByBidder, r.MetricsEngine, cfg.BidderInfos, gdprPermsBuilder, rateConvertor, categoriesFetcher, adsCertSigner, macroReplacer, priceFloorFetcher, singleFormatAdapters)
+	theExchange := exchange.NewExchange(adapters, cacheClient, cfg, requestValidator, syncersByBidder, r.MetricsEngine, cfg.BidderInfos, gdprPermsBuilder, rateConverter, categoriesFetcher, adsCertSigner, macroReplacer, priceFloorFetcher, singleFormatAdapters)
 	var uuidGenerator uuidutil.UUIDRandomGenerator
 	openrtbEndpoint, err := openrtb2.NewEndpoint(uuidGenerator, theExchange, requestValidator, fetcher, accounts, cfg, r.MetricsEngine, analyticsRunner, disabledBidders, defReqJSON, activeBidders, storedRespFetcher, planBuilder, tmaxAdjustments)
 	if err != nil {
@@ -308,14 +335,17 @@ func New(cfg *config.Configuration, rateConvertor *currency.RateConverter) (r *R
 		videoEndpoint = aspects.QueuedRequestTimeout(videoEndpoint, cfg.RequestTimeoutHeaders, r.MetricsEngine, metrics.ReqTypeVideo)
 	}
 
-	r.POST("/openrtb2/auction", openrtbEndpoint)
-	r.POST("/openrtb2/video", videoEndpoint)
-	r.GET("/openrtb2/amp", ampEndpoint)
+	// Rate-limit high-QPS ad-serving endpoints to prevent overload.
+	// 500 concurrent in-flight requests per endpoint; excess gets 429.
+	const maxConcurrentAdRequests = 500
+	r.POST("/openrtb2/auction", newRateLimiter(maxConcurrentAdRequests, openrtbEndpoint))
+	r.POST("/openrtb2/video", newRateLimiter(maxConcurrentAdRequests, videoEndpoint))
+	r.GET("/openrtb2/amp", newRateLimiter(maxConcurrentAdRequests, ampEndpoint))
 	r.GET("/info/bidders", infoEndpoints.NewBiddersEndpoint(cfg.BidderInfos))
 	r.GET("/info/bidders/:bidderName", infoEndpoints.NewBiddersDetailEndpoint(cfg.BidderInfos))
 	r.GET("/bidders/params", NewJsonDirectoryServer(schemaDirectory, paramsValidator))
 	r.POST("/cookie_sync", endpoints.NewCookieSyncEndpoint(syncersByBidder, cfg, gdprPermsBuilder, tcf2CfgBuilder, r.MetricsEngine, analyticsRunner, accounts, activeBidders).Handle)
-	r.GET("/status", endpoints.NewStatusEndpoint(cfg.StatusResponse))
+	r.GET("/status", endpoints.NewStatusEndpoint(cfg.StatusResponse, cfg))
 	r.GET("/", serveIndex)
 	r.Handler("GET", "/version", endpoints.NewVersionEndpoint(version.Ver, version.Rev))
 	r.ServeFiles("/static/*filepath", http.Dir("static"))
@@ -350,10 +380,12 @@ func New(cfg *config.Configuration, rateConvertor *currency.RateConverter) (r *R
 	//   GET/POST /video/adserver         — ad server config CRUD
 	videoPipeline := endpoints.NewVideoPipelineHandler(theExchange, cfg, r.MetricsEngine, "./data")
 	r.shutdowns = append(r.shutdowns, videoPipeline.Shutdown)
-	r.GET("/video/vast", videoPipeline.VASTEndpoint())
-	r.POST("/video/vast", videoPipeline.VASTEndpoint())
-	r.GET("/video/ortb", videoPipeline.ORTBEndpoint())
-	r.POST("/video/ortb", videoPipeline.ORTBEndpoint())
+	vastEp := videoPipeline.VASTEndpoint()
+	ortbEp := videoPipeline.ORTBEndpoint()
+	r.GET("/video/vast", newRateLimiter(maxConcurrentAdRequests, vastEp))
+	r.POST("/video/vast", newRateLimiter(maxConcurrentAdRequests, vastEp))
+	r.GET("/video/ortb", newRateLimiter(maxConcurrentAdRequests, ortbEp))
+	r.POST("/video/ortb", newRateLimiter(maxConcurrentAdRequests, ortbEp))
 	r.GET("/video/impression", videoPipeline.ImpressionEndpoint())
 	r.GET("/video/tracking", videoPipeline.TrackingEndpoint())
 	r.GET("/video/tracking/events", auth(videoPipeline.TrackingEventsEndpoint()))
@@ -366,7 +398,7 @@ func New(cfg *config.Configuration, rateConvertor *currency.RateConverter) (r *R
 	// Wire demand-routing dependencies into the VideoExchange handler, wire live
 	// video stats into the supply/demand partner list endpoints, then register
 	// all dashboard routes (auth-protected) via the central registry.
-	dashReg.WireVideoExchange(videoPipeline.RegisterAdServerConfig)
+	dashReg.WireVideoExchange(videoPipeline.RegisterAdServerConfig, videoPipeline.UnregisterAdServerConfig)
 	dashReg.WireVideoStats(videoPipeline.Snapshot)
 	dashReg.Register(r.Router, auth)
 
@@ -459,8 +491,25 @@ func SupportCORS(handler http.Handler) http.Handler {
 		AllowOriginFunc: func(string) bool {
 			return true
 		},
-		AllowedHeaders: []string{"Origin", "X-Requested-With", "Content-Type", "Accept"}})
-	return c.Handler(handler)
+		AllowedHeaders: []string{"Origin", "X-Requested-With", "Content-Type", "Accept"},
+		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
+		MaxAge:         600,
+	})
+	return securityHeaders(c.Handler(handler))
+}
+
+// securityHeaders wraps a handler to inject security-related response headers
+// on every response, providing defense-in-depth against XSS, clickjacking,
+// and MIME-sniffing attacks.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func readDefaultRequest(defReqConfig config.DefReqConfig) []byte {

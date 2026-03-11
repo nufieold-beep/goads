@@ -24,6 +24,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -145,29 +146,19 @@ func (a *vastToVASTAdapter) Execute(
 	pr *PlayerRequest,
 	cfg *AdServerConfig,
 ) (*DemandResponse, error) {
-	if cfg.DemandVASTURL == "" {
-		return nil, fmt.Errorf("demand VAST url is empty")
+	vastXML, auctionID, noFill, err := a.h.fetchTrackedVASTDemand(ctx, pr, cfg)
+	if err != nil {
+		return nil, err
 	}
-	resolvedURL := substituteMacros(cfg.DemandVASTURL, pr, cfg)
-
-	vastXML, err := fetchVAST(ctx, a.h.demandClient, resolvedURL, pr.UA)
-	if err != nil || strings.TrimSpace(vastXML) == "" {
-		// Serve minimal empty VAST (NoFill) on fetch failure or empty body.
-		return &DemandResponse{VASTXml: emptyVAST(), NoFill: true, WinPrice: 0}, nil
+	winPrice := cfg.FloorCPM
+	if noFill {
+		winPrice = 0
 	}
-	// Inject PBS impression + quartile/complete beacons so VCR and impression
-	// stats are recorded for direct VAST-tag demand (fixes broken stats on VAST path).
-	auctionID := fastGenerateID()
-	bidID := fastGenerateID()
-	reqBaseURL := cfg.RequestBaseURL
-	pbsImpURL := a.h.buildImpressionURL(reqBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
-	trackingEvts := a.h.buildTrackingEventList(reqBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
-	vastXML = injectVASTImpression(vastXML, pbsImpURL)
-	vastXML = injectVASTTracking(vastXML, trackingEvts)
 	return &DemandResponse{
 		VASTXml:   vastXML,
 		AuctionID: auctionID,
-		WinPrice:  cfg.FloorCPM, // treat VAST tag as fixed CPM defined in config
+		WinPrice:  winPrice,
+		NoFill:    noFill,
 	}, nil
 }
 
@@ -195,14 +186,10 @@ func (a *vastToORTBAdapter) Execute(
 		return nil, err
 	}
 	win, bidder, err := a.h.extractWinningBid(bidResp, cfg)
-	if err != nil {
-		return nil, err
-	}
-	if win == nil {
-		// No winning bid: return empty VAST so player can continue without error.
+	if err != nil || win == nil {
 		return &DemandResponse{VASTXml: emptyVAST(), NoFill: true, AuctionID: bidResp.ID}, nil
 	}
-	vastXML, err := a.h.buildVASTResponse(pr, cfg, win, bidder, bidResp.ID)
+	vastXML, err := a.h.buildVASTResponse(ctx, pr, cfg, win, bidder, bidResp.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -262,28 +249,16 @@ func (a *ortbToVASTAdapter) Execute(
 	pr *PlayerRequest,
 	cfg *AdServerConfig,
 ) (*DemandResponse, error) {
-	if cfg.DemandVASTURL == "" {
-		return nil, fmt.Errorf("demand VAST url is empty")
+	vastXML, auctionID, noFill, err := a.h.fetchTrackedVASTDemand(ctx, pr, cfg)
+	if err != nil {
+		return nil, err
 	}
-	resolvedURL := substituteMacros(cfg.DemandVASTURL, pr, cfg)
-	vastXML, err := fetchVAST(ctx, a.h.demandClient, resolvedURL, pr.UA)
-	if err != nil || strings.TrimSpace(vastXML) == "" {
-		// Return empty VAST BidResponse; mark as NoFill.
-		emptyResp := vastXMLToBidResponseWithPrice(emptyVAST(), 0)
-		return &DemandResponse{BidResp: emptyResp, WinPrice: 0, NoFill: true}, nil
+	winPrice := cfg.FloorCPM
+	if noFill {
+		winPrice = 0
 	}
-	// Inject PBS impression + quartile/complete beacons so VCR and impression
-	// stats are recorded for ORTB-inbound VAST-tag demand (mirrors vastToVASTAdapter).
-	auctionID := fastGenerateID()
-	bidID := fastGenerateID()
-	reqBaseURL := cfg.RequestBaseURL
-	pbsImpURL := a.h.buildImpressionURL(reqBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
-	trackingEvts := a.h.buildTrackingEventList(reqBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
-	vastXML = injectVASTImpression(vastXML, pbsImpURL)
-	vastXML = injectVASTTracking(vastXML, trackingEvts)
-	bidResp := vastXMLToBidResponseWithPrice(vastXML, cfg.FloorCPM)
-	// fixed CPM from config applies to VAST-tag demand
-	return &DemandResponse{BidResp: bidResp, WinPrice: cfg.FloorCPM, AuctionID: auctionID}, nil
+	bidResp := vastXMLToBidResponseWithPrice(vastXML, winPrice)
+	return &DemandResponse{BidResp: bidResp, WinPrice: winPrice, AuctionID: auctionID, NoFill: noFill}, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -304,10 +279,14 @@ func (a *vastPrebidAdapter) Execute(
 		return nil, err
 	}
 	win, bidder, err := a.h.extractWinningBid(bidResp, cfg)
-	if err != nil {
-		return nil, err
+	if err != nil || win == nil {
+		auctionID := ""
+		if bidResp != nil {
+			auctionID = bidResp.ID
+		}
+		return &DemandResponse{VASTXml: emptyVAST(), NoFill: true, AuctionID: auctionID}, nil
 	}
-	vastXML, err := a.h.buildVASTResponse(pr, cfg, win, bidder, bidResp.ID)
+	vastXML, err := a.h.buildVASTResponse(ctx, pr, cfg, win, bidder, bidResp.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -349,11 +328,211 @@ func (a *ortbPrebidAdapter) Execute(
 // Shared helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+// fetchTrackedVASTDemand fetches direct VAST-tag demand, resolves VAST wrapper
+// chains server-side (up to 5 hops), injects PBS tracking, and returns the
+// enriched VAST document together with a synthetic auction ID.
+//
+// Server-side wrapper resolution is critical for CTV: most CTV players
+// (Roku, Fire TV, Samsung) have limited wrapper-chain support and will fail
+// if the ad server returns a Wrapper pointing to another Wrapper pointing to
+// the real creative. By resolving the full chain here, the player always
+// receives a VAST document containing the final InLine/MediaFile.
+func (h *VideoPipelineHandler) fetchTrackedVASTDemand(
+	ctx context.Context,
+	pr *PlayerRequest,
+	cfg *AdServerConfig,
+) (vastXML string, auctionID string, noFill bool, err error) {
+	if cfg.DemandVASTURL == "" {
+		return "", "", false, fmt.Errorf("demand VAST url is empty")
+	}
+	resolvedDemandURL := substituteMacros(cfg.DemandVASTURL, pr, cfg)
+	vastXML, err = h.fetchVAST(ctx, resolvedDemandURL, pr.UA)
+	if err != nil || strings.TrimSpace(vastXML) == "" {
+		return emptyVAST(), "", true, nil
+	}
+
+	// Resolve VAST wrapper chains server-side so the player gets the final
+	// InLine creative directly, without needing to follow redirects.
+	vastXML, err = h.resolveVASTWrapperChain(ctx, vastXML, pr.UA, 5)
+	if err != nil || strings.TrimSpace(vastXML) == "" {
+		return emptyVAST(), "", true, nil
+	}
+
+	auctionID = fastGenerateID()
+	bidID := fastGenerateID()
+	requestBaseURL := cfg.RequestBaseURL
+	pbsImpressionURL := h.buildImpressionURL(requestBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
+	trackingEvents := h.buildTrackingEventList(requestBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
+	vastXML = injectVASTImpression(vastXML, pbsImpressionURL)
+	vastXML = injectVASTTracking(vastXML, trackingEvents)
+	return vastXML, auctionID, false, nil
+}
+
+// resolveVASTWrapperChain follows VAST Wrapper → VASTAdTagURI chains up to
+// maxDepth hops, merging impression pixels and tracking events from each
+// wrapper layer into the final InLine document. This enables the full demand
+// chain: player → adserver → dsp1 → dsp2 → ... → final dsp with MediaFile.
+//
+// If the document is already an InLine (no Wrapper), it is returned as-is.
+// If the chain cannot be fully resolved (timeout, invalid XML, depth exceeded),
+// the last successfully fetched document is returned so the player can still
+// attempt to render it.
+func (h *VideoPipelineHandler) resolveVASTWrapperChain(
+	ctx context.Context,
+	vastXML string,
+	ua string,
+	maxDepth int,
+) (string, error) {
+	var wrapperImpressions []string
+	var wrapperTrackings []string
+	current := vastXML
+
+	for depth := 0; depth < maxDepth; depth++ {
+		tagURI := extractVASTAdTagURI(current)
+		if tagURI == "" {
+			break // InLine or no wrapper — chain is resolved
+		}
+
+		// Collect impression and tracking pixels from this wrapper layer
+		// before following the chain, so they can be injected into the final doc.
+		wrapperImpressions = append(wrapperImpressions, extractImpressionURLs(current)...)
+		wrapperTrackings = append(wrapperTrackings, extractTrackingURLs(current)...)
+
+		log.Printf("resolveVASTWrapperChain: depth=%d following wrapper → %s", depth+1, truncateURL(tagURI, 120))
+		next, err := h.fetchVAST(ctx, tagURI, ua)
+		if err != nil {
+			log.Printf("resolveVASTWrapperChain: depth=%d fetch error: %v — returning last valid VAST", depth+1, err)
+			break // return what we have
+		}
+		if strings.TrimSpace(next) == "" {
+			log.Printf("resolveVASTWrapperChain: depth=%d empty response — returning last valid VAST", depth+1)
+			break
+		}
+		current = next
+	}
+
+	// Merge accumulated wrapper impression/tracking pixels into the final document.
+	for _, impURL := range wrapperImpressions {
+		current = injectVASTImpression(current, impURL)
+	}
+	for _, trackURL := range wrapperTrackings {
+		current = injectVASTTracking(current, []vastTracking{{Event: "start", Inner: vastCDATA{Text: trackURL}}})
+	}
+	return current, nil
+}
+
+// extractVASTAdTagURI extracts the first VASTAdTagURI from a VAST Wrapper.
+// Returns "" if the document is not a Wrapper or contains no tag URI.
+func extractVASTAdTagURI(vast string) string {
+	upper := strings.ToUpper(vast)
+	if !strings.Contains(upper, "<WRAPPER") && !strings.Contains(upper, "<WRAPPER>") {
+		return ""
+	}
+	tagStart := indexCaseFold(vast, "<vastadtaguri")
+	if tagStart == -1 {
+		return ""
+	}
+	// Find the closing >
+	gtIdx := strings.Index(vast[tagStart:], ">")
+	if gtIdx == -1 {
+		return ""
+	}
+	contentStart := tagStart + gtIdx + 1
+	tagEnd := indexCaseFold(vast[contentStart:], "</vastadtaguri")
+	if tagEnd == -1 {
+		return ""
+	}
+	raw := vast[contentStart : contentStart+tagEnd]
+	// Strip CDATA wrapper if present
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, "<![CDATA[") {
+		raw = strings.TrimPrefix(raw, "<![CDATA[")
+		raw = strings.TrimSuffix(raw, "]]>")
+	}
+	return strings.TrimSpace(raw)
+}
+
+// extractImpressionURLs extracts all <Impression> pixel URLs from a VAST doc.
+func extractImpressionURLs(vast string) []string {
+	var urls []string
+	lower := strings.ToLower(vast)
+	search := 0
+	for {
+		start := strings.Index(lower[search:], "<impression")
+		if start == -1 {
+			break
+		}
+		start += search
+		gt := strings.Index(vast[start:], ">")
+		if gt == -1 {
+			break
+		}
+		contentStart := start + gt + 1
+		end := strings.Index(lower[contentStart:], "</impression")
+		if end == -1 {
+			break
+		}
+		raw := strings.TrimSpace(vast[contentStart : contentStart+end])
+		if strings.HasPrefix(raw, "<![CDATA[") {
+			raw = strings.TrimPrefix(raw, "<![CDATA[")
+			raw = strings.TrimSuffix(raw, "]]>")
+			raw = strings.TrimSpace(raw)
+		}
+		if strings.HasPrefix(raw, "http") {
+			urls = append(urls, raw)
+		}
+		search = contentStart + end
+	}
+	return urls
+}
+
+// extractTrackingURLs extracts all <Tracking> pixel URLs from a VAST doc.
+func extractTrackingURLs(vast string) []string {
+	var urls []string
+	lower := strings.ToLower(vast)
+	search := 0
+	for {
+		start := strings.Index(lower[search:], "<tracking")
+		if start == -1 {
+			break
+		}
+		start += search
+		gt := strings.Index(vast[start:], ">")
+		if gt == -1 {
+			break
+		}
+		contentStart := start + gt + 1
+		end := strings.Index(lower[contentStart:], "</tracking")
+		if end == -1 {
+			break
+		}
+		raw := strings.TrimSpace(vast[contentStart : contentStart+end])
+		if strings.HasPrefix(raw, "<![CDATA[") {
+			raw = strings.TrimPrefix(raw, "<![CDATA[")
+			raw = strings.TrimSuffix(raw, "]]>")
+			raw = strings.TrimSpace(raw)
+		}
+		if strings.HasPrefix(raw, "http") {
+			urls = append(urls, raw)
+		}
+		search = contentStart + end
+	}
+	return urls
+}
+
+// truncateURL shortens a URL for logging, preserving the beginning.
+func truncateURL(u string, maxLen int) string {
+	if len(u) <= maxLen {
+		return u
+	}
+	return u[:maxLen] + "..."
+}
+
 // fetchVAST performs an HTTP GET on vastURL, reads up to 1 MB of the response
 // body, and validates that it is well-formed XML before returning the string.
 // It is used by vastToVASTAdapter and ortbToVASTAdapter.
 // ua is forwarded as the User-Agent header (pass empty string to omit).
-func fetchVAST(ctx context.Context, client *http.Client, vastURL string, ua string) (string, error) {
+func (h *VideoPipelineHandler) fetchVAST(ctx context.Context, vastURL string, ua string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, vastURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("build VAST request: %w", err)
@@ -365,7 +544,7 @@ func fetchVAST(ctx context.Context, client *http.Client, vastURL string, ua stri
 	req.Header.Set("Accept-Encoding", "gzip, deflate")
 	req.Header.Set("Connection", "keep-alive")
 
-	resp, err := client.Do(req)
+	resp, err := h.demandClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("GET demand VAST: %w", err)
 	}
@@ -394,14 +573,18 @@ func fetchVAST(ctx context.Context, client *http.Client, vastURL string, ua stri
 
 	const maxSize = 1 << 20 // 1 MB
 	limited := &io.LimitedReader{R: body, N: maxSize + 1}
-	data, err := io.ReadAll(limited)
+	buf := h.bufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer h.bufPool.Put(buf)
+	_, err = io.Copy(buf, limited)
 	if err != nil {
 		return "", fmt.Errorf("read demand VAST body: %w", err)
 	}
+	data := buf.Bytes()
 	if len(data) > maxSize {
 		return "", fmt.Errorf("demand VAST too large (>1MB)")
 	}
-	if len(strings.TrimSpace(string(data))) == 0 {
+	if len(bytes.TrimSpace(data)) == 0 {
 		return "", fmt.Errorf("demand VAST empty")
 	}
 
@@ -414,10 +597,10 @@ func fetchVAST(ctx context.Context, client *http.Client, vastURL string, ua stri
 	if len(probe) > 512 {
 		probe = probe[:512]
 	}
-	if !strings.Contains(strings.ToUpper(string(probe)), "<VAST") {
+	if indexCaseFold(string(probe), "<VAST") == -1 {
 		return "", fmt.Errorf("demand response is valid XML but not a VAST document")
 	}
-	return string(data), nil
+	return buf.String(), nil
 }
 
 var gzipReaderPool = sync.Pool{
