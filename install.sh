@@ -181,6 +181,7 @@ After=network.target
 Type=simple
 WorkingDirectory=${INSTALL_DIR}
 ExecStart=${INSTALL_DIR}/${BINARY_NAME}
+Environment=DASH_ADMIN_PASS=${DASH_PASS}
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -15,24 +15,26 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .sidebar-icon{background:var(--primary);color:#fff;border-radius:10px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
 .sidebar-title{font-size:14px;font-weight:700;line-height:1.2}
 .sidebar-sub{font-size:11px;color:var(--muted)}
-.nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border:none;border-radius:10px;background:transparent;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;text-align:left;transition:background .15s,color .15s}
-.nav-btn:hover{background:var(--bg)}
-.nav-btn.active{background:var(--primary);color:#fff;font-weight:600}
+.nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border:none;border-radius:10px;background:transparent;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;text-align:left;transition:background .15s,color .15s,box-shadow .15s}
+.nav-btn:hover{background:var(--bg);box-shadow:inset 0 0 0 1px var(--border)}
+.nav-btn.active{background:var(--primary);color:#fff;font-weight:700;box-shadow:0 8px 18px rgba(99,102,241,.22)}
 .nav-group{display:flex;flex-direction:column;gap:1px}
-.nav-group-header{display:flex;align-items:center;justify-content:space-between;width:100%;padding:9px 12px;border:none;border-radius:10px;background:transparent;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;transition:background .15s}
+.nav-group-header{display:flex;align-items:center;justify-content:space-between;width:100%;padding:9px 12px;border:none;border-radius:10px;background:transparent;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,color .15s}
 .nav-group-header:hover{background:var(--bg)}
+.nav-group-header.active{background:var(--primary-bg);color:var(--text)}
 .chevron{font-style:normal;font-size:11px;transition:transform .2s;display:inline-block}
 .nav-group-header.open .chevron{transform:rotate(180deg)}
 .nav-group-children{margin-left:14px;padding-left:12px;border-left:2px solid var(--border);display:flex;flex-direction:column;gap:1px;overflow:hidden;max-height:0;transition:max-height .3s ease}
 .nav-group-children.open{max-height:300px}
-.nav-child-btn{display:block;width:100%;padding:7px 10px;border:none;border-radius:8px;background:transparent;color:var(--muted);font-size:12.5px;cursor:pointer;text-align:left;transition:background .15s,color .15s}
+.nav-child-btn{display:block;width:100%;padding:7px 10px;border:none;border-radius:8px;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer;text-align:left;transition:background .15s,color .15s,box-shadow .15s}
 .nav-child-btn:hover{background:var(--bg);color:var(--text)}
-.nav-child-btn.active{color:var(--primary);font-weight:600;background:var(--primary-bg)}
+.nav-child-btn.active{color:var(--primary);font-weight:700;background:var(--primary-bg);box-shadow:inset 0 0 0 1px var(--border2)}
 .nav-section{margin-top:10px;display:flex;flex-direction:column;gap:1px}.nav-section-title{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:7px 12px 4px}.nav-item{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border:none;border-radius:10px;background:transparent;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;text-align:left;transition:background .15s,color .15s}.nav-item:hover{background:var(--bg)}.nav-item.active{background:var(--primary);color:#fff;font-weight:600}.nav-icon{font-size:15px}
 /* Main */
-.main{padding:28px 32px;display:flex;flex-direction:column;gap:18px;min-width:0}
-.page-hdr h1{font-size:26px;font-weight:700;letter-spacing:-.02em}
-.page-hdr p{font-size:13px;color:var(--muted);margin-top:4px}
+.main{padding:28px 32px;display:flex;flex-direction:column;gap:18px;min-width:0;background:radial-gradient(circle at 20% 20%,rgba(99,102,241,.06),transparent 32%),radial-gradient(circle at 80% 0,rgba(14,165,233,.07),transparent 30%)}
+.page-hdr{display:flex;flex-direction:column;gap:4px;padding:6px 0 10px;border-bottom:1px solid var(--border)}
+.page-hdr h1{font-size:26px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
+.page-hdr p{font-size:13px;color:var(--muted);margin-top:2px}
 /* Card */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:22px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 /* Filters */
@@ -113,7 +115,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
 .btn-cancel{background:transparent;border:1px solid var(--border2);border-radius:8px;color:var(--muted);font-size:13px;padding:7px 16px;cursor:pointer}
 .btn-save{background:var(--primary);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;padding:7px 22px;cursor:pointer}
 .btn-save:hover{opacity:.85}
-.form-error{display:none;background:rgba(220,38,38,.1);border:1px solid #dc2626;color:#dc2626;border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:12px}
+.form-error{display:none;background:rgba(220,38,38,.08);border:1px solid #dc2626;color:#b91c1c;border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:12px}
 /* Confirm */
 .confirm-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;align-items:center;justify-content:center}
 .confirm-overlay.open{display:flex}
@@ -122,7 +124,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
 .confirm-box p{font-size:13px;color:var(--muted);margin-bottom:20px}
 .confirm-actions{display:flex;gap:10px;justify-content:center}
 .btn-danger{background:#dc2626;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;padding:7px 22px;cursor:pointer}
-/* ─── Mobile top bar ─────────────────────────────────────────────────────── */
+/* --- Mobile top bar ------------------------------------------------------- */
 .mob-topbar{display:none;position:sticky;top:0;z-index:200;height:54px;background:var(--surface);border-bottom:1px solid var(--border);padding:0 14px;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
 .mob-ham{background:none;border:none;width:36px;height:36px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;padding:0;flex-shrink:0}
 .mob-ham span{display:block;width:20px;height:2px;background:var(--text2);border-radius:2px;transition:transform .2s,opacity .2s}
@@ -137,7 +139,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
 /* Sidebar drawer backdrop */
 .sb-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:290}
 .sb-backdrop.open{display:block}
-/* ─── Responsive: ≤ 900px ────────────────────────────────────────────────── */
+/* --- Responsive: = 900px -------------------------------------------------- */
 @media(max-width:900px){
   .mob-topbar{display:flex}
   .layout{grid-template-columns:1fr}
@@ -148,7 +150,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
   .main{padding:16px;gap:12px}
   .page-hdr h1{font-size:20px}
   .page-hdr p{font-size:12px}
-  /* KPI cards → 2-column grid instead of horizontal scroll */
+  /* KPI cards ? 2-column grid instead of horizontal scroll */
   .ov-kpi-row{display:grid !important;grid-template-columns:repeat(2,1fr);overflow-x:visible;border-radius:16px}
   .kpi-card{min-width:0;border-right:none;border-bottom:1px solid var(--border);padding:12px 14px}
   .kpi-card:nth-child(odd){border-right:1px solid var(--border)}
@@ -161,7 +163,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
   /* Tab bar: horizontal scroll without showing scrollbar */
   .tab-bar{overflow-x:auto;width:100%;scrollbar-width:none}
   .tab-bar::-webkit-scrollbar{display:none}
-  /* Form grid → 1 column */
+  /* Form grid ? 1 column */
   .form-grid{grid-template-columns:1fr}
   /* Modals: nearly full screen width */
   .modal{width:calc(100vw - 20px);max-width:calc(100vw - 20px);margin:10px}
@@ -178,13 +180,13 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
   .camp-tabs-bar{overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}
   .camp-tabs-bar::-webkit-scrollbar{display:none}
   .camp-body{padding:14px 16px}
-  /* Protocol checkbox grid → 3 col */
+  /* Protocol checkbox grid ? 3 col */
   .cs-proto-grid{grid-template-columns:repeat(3,1fr)}
-  /* Source pricing row → 2 col, label full width */
+  /* Source pricing row ? 2 col, label full width */
   .src-pricing-row{grid-template-columns:1fr 1fr}
   .src-pricing-label{grid-column:1/-1;padding-bottom:2px}
   .src-pricing-note{grid-column:1/-1}
-  /* Reports filter grid → 2 col */
+  /* Reports filter grid ? 2 col */
   .rpt-filter-grid{grid-template-columns:1fr 1fr}
   /* Reports actions: wrap */
   .rpt-actions{flex-wrap:wrap;justify-content:flex-start}
@@ -196,7 +198,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
   tbody td{padding:8px 10px}
   thead th{padding:7px 10px}
 }
-/* ─── Responsive: ≤ 500px (phones) ──────────────────────────────────────── */
+/* --- Responsive: = 500px (phones) ---------------------------------------- */
 @media(max-width:500px){
   .ov-kpi-row{grid-template-columns:1fr 1fr}
   .rpt-filter-grid{grid-template-columns:1fr}
@@ -208,6 +210,13 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
 }
 /* Page sections */
 .page-section{display:none}.page-section.active{display:flex;flex-direction:column;gap:14px}
+/* Toast */
+.toast-stack{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:10px;z-index:1200;pointer-events:none}
+.toast{min-width:240px;max-width:360px;background:#0f172a;color:#fff;padding:12px 14px;border-radius:12px;box-shadow:0 14px 38px rgba(0,0,0,.2);opacity:0;transform:translateY(12px);transition:opacity .15s,transform .15s}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.success{background:#15803d}
+.toast.error{background:#b91c1c}
+.toast.info{background:#0f172a}
 /* Overview top bar */
 .ov-topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
 .ov-updated{font-size:12px;color:var(--muted)}
@@ -346,7 +355,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
 </style>
 </head>
 <body>
-<!-- Mobile top bar (visible only on ≤900px) -->
+<!-- Mobile top bar (visible only on =900px) -->
 <div class="mob-topbar" id="mob-topbar">
   <button class="mob-ham" id="mob-ham-btn" onclick="toggleSidebar()" aria-label="Open navigation">
     <span></span><span></span><span></span>
@@ -373,8 +382,8 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
       <em class="chevron">&#9660;</em>
     </button>
     <div class="nav-group-children open" id="ch-pub">
-      <button class="nav-child-btn active" onclick="navToPage('publishers',this)">Publishers</button>
-      <button class="nav-child-btn" onclick="navToPage('adunits',this)">Ad Units</button>
+      <button class="nav-child-btn active" id="nav-publishers" onclick="navToPage('publishers',this)">Publishers</button>
+      <button class="nav-child-btn" id="nav-adunits" onclick="navToPage('adunits',this)">Ad Units</button>
     </div>
   </div>
   <div class="nav-group">
@@ -383,21 +392,25 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
       <em class="chevron">&#9660;</em>
     </button>
     <div class="nav-group-children open" id="ch-dem">
-      <button class="nav-child-btn" onclick="navToPage('advertisers',this)">Advertisers</button>
-      <button class="nav-child-btn" onclick="navToPage('campaigns',this)">Campaign</button>
+      <button class="nav-child-btn" id="nav-advertisers" onclick="navToPage('advertisers',this)">Advertisers</button>
+      <button class="nav-child-btn" id="nav-campaigns" onclick="navToPage('campaigns',this)">Campaign</button>
     </div>
   </div>
   <div class="nav-section">
     <div class="nav-section-title">Legacy Analytics</div>
-    <button class="nav-item" id="nav-bidders" onclick="setMainNav(this,'bidders')"><span class="nav-icon">📈</span>&nbsp;Bidders</button>
+    <button class="nav-item" id="nav-bidders" onclick="setMainNav(this,'bidders')"><span class="nav-icon">??</span>&nbsp;Bidders</button>
+  </div>
+  <div class="nav-section">
+    <div class="nav-section-title">Programmatic Analytics</div>
+    <button class="nav-item" id="nav-programmatic" onclick="setMainNav(this,'programmatic')"><span class="nav-icon">??</span>&nbsp;Dim Breakdown</button>
   </div>
   <div class="nav-group">
     <button class="nav-group-header open" onclick="toggleGroup(this,'ch-aud')">
-      <span style="display:flex;align-items:center;gap:9px"><span style="font-size:14px">👥</span> Audience</span>
+      <span style="display:flex;align-items:center;gap:9px"><span style="font-size:14px">??</span> Audience</span>
       <em class="chevron">&#9660;</em>
     </button>
     <div class="nav-group-children open" id="ch-aud">
-      <button class="nav-child-btn" onclick="navToPage('audiences',this)">Segments</button>
+      <button class="nav-child-btn" id="nav-audiences" onclick="navToPage('audiences',this)">Segments</button>
     </div>
   </div>
   <div class="nav-group">
@@ -406,9 +419,9 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
       <em class="chevron">&#9660;</em>
     </button>
     <div class="nav-group-children open" id="ch-opt">
-      <button class="nav-child-btn" onclick="navToPage('yield',this)">Yield Rules</button>
-      <button class="nav-child-btn" onclick="navToPage('floor-rules',this)">Dynamic Floors</button>
-      <button class="nav-child-btn" onclick="navToPage('pod-rules',this)">Pod Optimization</button>
+      <button class="nav-child-btn" id="nav-yield" onclick="navToPage('yield',this)">Yield Rules</button>
+      <button class="nav-child-btn" id="nav-floor" onclick="navToPage('floor-rules',this)">Dynamic Floors</button>
+      <button class="nav-child-btn" id="nav-pod" onclick="navToPage('pod-rules',this)">Pod Optimization</button>
     </div>
   </div>
   <div class="nav-group">
@@ -417,9 +430,9 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
       <em class="chevron">&#9660;</em>
     </button>
     <div class="nav-group-children open" id="ch-qual">
-      <button class="nav-child-btn" onclick="navToPage('bidder-scorecards',this)">Bidder Scorecards</button>
-      <button class="nav-child-btn" onclick="navToPage('qa-profiles',this)">Request QA</button>
-      <button class="nav-child-btn" onclick="navToPage('timeout-profiles',this)">Timeout Profiles</button>
+      <button class="nav-child-btn" id="nav-bsc" onclick="navToPage('bidder-scorecards',this)">Bidder Scorecards</button>
+      <button class="nav-child-btn" id="nav-qa" onclick="navToPage('qa-profiles',this)">Request QA</button>
+      <button class="nav-child-btn" id="nav-timeout" onclick="navToPage('timeout-profiles',this)">Timeout Profiles</button>
     </div>
   </div>
   <div style="margin-top:auto;padding-top:14px;border-top:1px solid var(--border)">
@@ -428,14 +441,14 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
 </aside>
 <main class="main">
   <div class="page-hdr">
-    <h1>Dashboard</h1>
-    <p>Manage supply partners, publishers, channels, ad units, demand partners, demands, and demand rules in one operational view.</p>
+    <h1 id="page-title">Dashboard</h1>
+    <p id="page-subtitle">Manage supply partners, publishers, ad units, demand partners, and rules in one operational view.</p>
   </div>
   <!-- Overview page -->
   <div id="page-overview" class="page-section active">
     <!-- Top bar -->
     <div class="ov-topbar">
-      <span class="ov-updated" id="ov-updated-time">Last updated at &#8212; (Local time)</span>
+      <span class="ov-updated" id="ov-updated-time">Last updated at &#8212; (UTC)</span>
       <div class="ov-controls">
         <label class="ov-live-wrap">
           <span class="ov-live-pill"><input type="checkbox" id="ov-live-chk" onchange="ovToggleLive(this.checked)"><span class="ov-live-track"></span></span>
@@ -455,57 +468,57 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
       <div class="kpi-card">
         <div class="kpi-label">Est. Earnings (USD)<span class="kpi-chg" id="kpi-earn-chg"></span></div>
         <div class="kpi-value" id="kpi-earn-val">&#8212;</div>
-        <div class="kpi-prev-row"><span>Yesterday (EST)</span><span class="kpi-prev-val" id="kpi-earn-prev">&#8212;</span></div>
+        <div class="kpi-prev-row"><span>Yesterday (UTC)</span><span class="kpi-prev-val" id="kpi-earn-prev">&#8212;</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">eCPM (USD)<span class="kpi-chg" id="kpi-ecpm-chg"></span></div>
         <div class="kpi-value" id="kpi-ecpm-val">&#8212;</div>
-        <div class="kpi-prev-row"><span>Yesterday (EST)</span><span class="kpi-prev-val" id="kpi-ecpm-prev">&#8212;</span></div>
+        <div class="kpi-prev-row"><span>Yesterday (UTC)</span><span class="kpi-prev-val" id="kpi-ecpm-prev">&#8212;</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Requests<span class="kpi-chg" id="kpi-req-chg"></span></div>
         <div class="kpi-value" id="kpi-req-val">&#8212;</div>
-        <div class="kpi-prev-row"><span>Yesterday (EST)</span><span class="kpi-prev-val" id="kpi-req-prev">&#8212;</span></div>
+        <div class="kpi-prev-row"><span>Yesterday (UTC)</span><span class="kpi-prev-val" id="kpi-req-prev">&#8212;</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Opportunities<span class="kpi-chg" id="kpi-opp-chg"></span></div>
         <div class="kpi-value" id="kpi-opp-val">&#8212;</div>
-        <div class="kpi-prev-row"><span>Yesterday (EST)</span><span class="kpi-prev-val" id="kpi-opp-prev">&#8212;</span></div>
+        <div class="kpi-prev-row"><span>Yesterday (UTC)</span><span class="kpi-prev-val" id="kpi-opp-prev">&#8212;</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Impressions<span class="kpi-chg" id="kpi-imp-chg"></span></div>
         <div class="kpi-value" id="kpi-imp-val">&#8212;</div>
-        <div class="kpi-prev-row"><span>Yesterday (EST)</span><span class="kpi-prev-val" id="kpi-imp-prev">&#8212;</span></div>
+        <div class="kpi-prev-row"><span>Yesterday (UTC)</span><span class="kpi-prev-val" id="kpi-imp-prev">&#8212;</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Fill Rate<span class="kpi-chg" id="kpi-fill-chg"></span></div>
         <div class="kpi-value" id="kpi-fill-val">&#8212;</div>
-        <div class="kpi-prev-row"><span>Yesterday (EST)</span><span class="kpi-prev-val" id="kpi-fill-prev">&#8212;</span></div>
+        <div class="kpi-prev-row"><span>Yesterday (UTC)</span><span class="kpi-prev-val" id="kpi-fill-prev">&#8212;</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Response Rate<span class="kpi-chg" id="kpi-rrate-chg"></span></div>
         <div class="kpi-value" id="kpi-rrate-val">&#8212;</div>
-        <div class="kpi-prev-row"><span>Yesterday (EST)</span><span class="kpi-prev-val" id="kpi-rrate-prev">&#8212;</span></div>
+        <div class="kpi-prev-row"><span>Yesterday (UTC)</span><span class="kpi-prev-val" id="kpi-rrate-prev">&#8212;</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">VCR<span class="kpi-chg" id="kpi-vcr-chg"></span></div>
         <div class="kpi-value" id="kpi-vcr-val">&#8212;</div>
-        <div class="kpi-prev-row"><span>Yesterday (EST)</span><span class="kpi-prev-val" id="kpi-vcr-prev">&#8212;</span></div>
+        <div class="kpi-prev-row"><span>Yesterday (UTC)</span><span class="kpi-prev-val" id="kpi-vcr-prev">&#8212;</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Viewability<span class="kpi-chg" id="kpi-view-chg"></span></div>
         <div class="kpi-value" id="kpi-view-val">&#8212;</div>
-        <div class="kpi-prev-row"><span>Yesterday (EST)</span><span class="kpi-prev-val" id="kpi-view-prev">&#8212;</span></div>
+        <div class="kpi-prev-row"><span>Yesterday (UTC)</span><span class="kpi-prev-val" id="kpi-view-prev">&#8212;</span></div>
       </div>
     </div>
     <!-- Chart -->
     <div class="card ov-chart-card">
-      <div class="ov-chart-title" style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:12px">Traffic Overview — Today vs Yesterday</div>
+      <div class="ov-chart-title" style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:12px">Traffic Overview � Today vs Yesterday</div>
       <div class="ov-chart-wrap">
         <canvas id="ov-chart"></canvas>
       </div>
       <div class="ov-chart-legend">
-        <span><span class="leg-dot" style="background:#94a3b8"></span>Yesterday (EST)</span>
+        <span><span class="leg-dot" style="background:#94a3b8"></span>Yesterday (UTC)</span>
         <span><span class="leg-dot" style="background:#6366f1"></span>Ad Requests</span>
         <span><span class="leg-dot" style="background:#16a34a"></span>Opportunities</span>
       </div>
@@ -517,15 +530,15 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
         <span style="font-size:11px;color:var(--muted)">Programmatic / OpenRTB performance status</span>
       </div>
       <div class="xopt-grid" id="xopt-grid">
-        <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">Parallel Bidder Calls</div><div class="xopt-desc">All demand partners called concurrently via goroutines — zero sequential latency stacking.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
-        <div class="xopt-item" id="xopt-timeout"><div class="xopt-icon" id="xopt-timeout-icon">&#8987;</div><div class="xopt-body"><div class="xopt-title">Auction Timeout</div><div class="xopt-desc" id="xopt-timeout-desc">Loading…</div><span class="xopt-badge" id="xopt-timeout-badge"></span></div></div>
-        <div class="xopt-item" id="xopt-connpool"><div class="xopt-icon" id="xopt-connpool-icon">&#128257;</div><div class="xopt-body"><div class="xopt-title">HTTP Connection Pool</div><div class="xopt-desc" id="xopt-connpool-desc">Loading…</div><span class="xopt-badge" id="xopt-connpool-badge"></span></div></div>
-        <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">Price Floor Enforcement</div><div class="xopt-desc">Dynamic floor pricing active — low-value bids dropped before auction.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
-        <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">Second-Price Auction</div><div class="xopt-desc">OpenRTB 2.5 second-price logic applied — winner pays runner-up price.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
+        <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">Parallel Bidder Calls</div><div class="xopt-desc">All demand partners called concurrently via goroutines � zero sequential latency stacking.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
+        <div class="xopt-item" id="xopt-timeout"><div class="xopt-icon" id="xopt-timeout-icon">&#8987;</div><div class="xopt-body"><div class="xopt-title">Auction Timeout</div><div class="xopt-desc" id="xopt-timeout-desc">Loading�</div><span class="xopt-badge" id="xopt-timeout-badge"></span></div></div>
+        <div class="xopt-item" id="xopt-connpool"><div class="xopt-icon" id="xopt-connpool-icon">&#128257;</div><div class="xopt-body"><div class="xopt-title">HTTP Connection Pool</div><div class="xopt-desc" id="xopt-connpool-desc">Loading�</div><span class="xopt-badge" id="xopt-connpool-badge"></span></div></div>
+        <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">Price Floor Enforcement</div><div class="xopt-desc">Dynamic floor pricing active � low-value bids dropped before auction.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
+        <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">Second-Price Auction</div><div class="xopt-desc">OpenRTB 2.5 second-price logic applied � winner pays runner-up price.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
         <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">VAST Event Tracking</div><div class="xopt-desc">Server-side impression / complete / quartile trackers injected into VAST XML.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
-        <div class="xopt-item" id="xopt-gzip"><div class="xopt-icon" id="xopt-gzip-icon">&#128252;</div><div class="xopt-body"><div class="xopt-title">Response Compression (gzip)</div><div class="xopt-desc" id="xopt-gzip-desc">Loading…</div><span class="xopt-badge" id="xopt-gzip-badge"></span></div></div>
-        <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">Bid Adjustment Rules</div><div class="xopt-desc">Per-bidder CPM adjustment factors supported — normalize revenue across demand.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
-        <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">Fee-Free Pass-Through</div><div class="xopt-desc">Zero platform fee deductions — 100% of demand revenue forwarded to publishers.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
+        <div class="xopt-item" id="xopt-gzip"><div class="xopt-icon" id="xopt-gzip-icon">&#128252;</div><div class="xopt-body"><div class="xopt-title">Response Compression (gzip)</div><div class="xopt-desc" id="xopt-gzip-desc">Loading�</div><span class="xopt-badge" id="xopt-gzip-badge"></span></div></div>
+        <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">Bid Adjustment Rules</div><div class="xopt-desc">Per-bidder CPM adjustment factors supported � normalize revenue across demand.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
+        <div class="xopt-item"><div class="xopt-icon ok">&#10003;</div><div class="xopt-body"><div class="xopt-title">Fee-Free Pass-Through</div><div class="xopt-desc">Zero platform fee deductions � 100% of demand revenue forwarded to publishers.</div><span class="xopt-badge ok">ACTIVE</span></div></div>
       </div>
     </div>
   </div>
@@ -729,8 +742,8 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
     </div>
   </div>
   <div class="tab-bar">
-    <button class="tab-btn active" id="tbb-supply" onclick="showTab('supply')">Supply partners / Publishers</button>
-    <button class="tab-btn" id="tbb-demand" onclick="showTab('demand')">Demand partners</button>
+    <button class="tab-btn active" id="tbb-supply" onclick="navToTab('supply')">Supply partners / Publishers</button>
+    <button class="tab-btn" id="tbb-demand" onclick="navToTab('demand')">Demand partners</button>
   </div>
   <div class="tab-panel active" id="tab-supply">
     <div class="card table-card">
@@ -766,13 +779,13 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
   </div><!-- /page-tables -->
 
   <!-- Ad Units page (Demand VAST/ORTB third-party) -->
-  <!-- Ad Units page (Supply: publisher/player placements → Ad Server → Campaign demand) -->
+  <!-- Ad Units page (Supply: publisher/player placements ? Ad Server ? Campaign demand) -->
   <div id="page-adunits" class="page-section">
     <div class="card table-card">
       <div class="tc-hdr">
         <div>
           <h3>Ad Units</h3>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px">Publisher / player supply placements — each routes traffic to a linked Campaign demand endpoint</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Publisher / player supply placements � each routes traffic to a linked Campaign demand endpoint</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <span id="adunits-count" style="font-size:12px;color:var(--muted)"></span>
@@ -809,12 +822,34 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
       </table></div>
     </div>
   </div>
+  <!-- Programmatic Analytics page -->
+  <div id="page-programmatic" class="page-section">
+    <div class="rpt-breadcrumb"><span>Analytics</span><span>/</span><strong>Dimension Breakdown</strong></div>
+    <div class="card" style="overflow:hidden;border-radius:18px">
+      <div class="rpt-tab-row" id="prog-tab-row"></div>
+      <div class="rpt-filter-card" style="padding:12px 18px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:12px;color:var(--muted)">eCPM = Revenue &divide; Opportunities &times; 1000 &nbsp;&bull;&nbsp; Sorted by Revenue desc</div>
+          <button class="btn-rpt-gen" onclick="progModule.refresh()">&#8635; Refresh</button>
+        </div>
+      </div>
+    </div>
+    <div class="card rpt-table-card">
+      <div class="rpt-tbl-wrap">
+        <table class="rpt-tbl" id="prog-tbl">
+          <thead id="prog-thead"></thead>
+          <tbody id="prog-tbody"><tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px">Loading&#8230;</td></tr></tbody>
+          <tfoot id="prog-tfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
   <div id="page-campaigns" class="page-section">
     <div class="card table-card">
       <div class="tc-hdr">
         <div>
           <h3>Campaigns</h3>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px">Demand VAST / OpenRTB third-party endpoints — Ad Server forwards bid requests here</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Demand VAST / OpenRTB third-party endpoints � Ad Server forwards bid requests here</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <span id="campaigns-count" style="font-size:12px;color:var(--muted)"></span>
@@ -907,7 +942,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
       <div class="tc-hdr">
         <div>
           <h3>Dynamic Floor Rules</h3>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px">Segment-aware floor prices with optional auto-adjustment — by env, geo, device, genre, pod slot, and daypart</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Segment-aware floor prices with optional auto-adjustment � by env, geo, device, genre, pod slot, and daypart</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <span id="dfl-count" style="font-size:12px;color:var(--muted)"></span>
@@ -956,7 +991,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
       <div class="tc-hdr">
         <div>
           <h3>Timeout Profiles</h3>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px">Per-environment auction time budgets — balance fill rate vs latency for CTV, mobile, SSAI, and long-form pods</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Per-environment auction time budgets � balance fill rate vs latency for CTV, mobile, SSAI, and long-form pods</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <span id="to-count" style="font-size:12px;color:var(--muted)"></span>
@@ -1394,7 +1429,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
                 <label class="cs-rl"><input type="checkbox" class="vf-proto" value="8"/> VAST 4.0 Wrapper</label>
               </div>
             </div>
-            <div class="fg" style="margin-top:10px"><label>API Frameworks (CSV) — 1=VPAID1 2=VPAID2 3=MRAID1</label><input type="text" id="vf-apis" placeholder="2,3"/></div>
+            <div class="fg" style="margin-top:10px"><label>API Frameworks (CSV) � 1=VPAID1 2=VPAID2 3=MRAID1</label><input type="text" id="vf-apis" placeholder="2,3"/></div>
           </div>
         </div>
         <div class="cs-coll" style="margin-top:10px">
@@ -1664,7 +1699,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
         <div class="fg"><label>Expected Value</label><input type="number" id="bs-exp-val" min="0" step="0.0001" placeholder="2.80"/></div>
         <div class="fg"><label>Avg Wrapper Depth</label><input type="number" id="bs-wrapper" min="0" step="0.1" placeholder="1.2"/></div>
       </div>
-      <div class="cs-sec-title" style="margin-top:16px;margin-bottom:8px">Rate Metrics <small style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">&#8212; enter as 0–1 fractions (e.g. 0.75 = 75%)</small></div>
+      <div class="cs-sec-title" style="margin-top:16px;margin-bottom:8px">Rate Metrics <small style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">&#8212; enter as 0�1 fractions (e.g. 0.75 = 75%)</small></div>
       <div class="form-grid">
         <div class="fg"><label>Bid Rate</label><input type="number" id="bs-bid-rate" min="0" max="1" step="0.001" placeholder="0.65"/></div>
         <div class="fg"><label>Win Rate</label><input type="number" id="bs-win-rate" min="0" max="1" step="0.001" placeholder="0.12"/></div>
@@ -1705,7 +1740,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
         </div>
         <div class="fg"><label>Content Genre</label><input type="text" id="df-genre" placeholder="Sports, News, * for any"/></div>
         <div class="fg"><label>Slot in Pod (0=any, 1=first, -1=last)</label><input type="number" id="df-slot" step="1" placeholder="0"/></div>
-        <div class="fg"><label>Daypart Hour (0–23, -1=any)</label><input type="number" id="df-daypart" min="-1" max="23" step="1" placeholder="-1"/></div>
+        <div class="fg"><label>Daypart Hour (0�23, -1=any)</label><input type="number" id="df-daypart" min="-1" max="23" step="1" placeholder="-1"/></div>
       </div>
       <div class="cs-sec-title" style="margin-top:16px;margin-bottom:8px">Floor Prices (USD)</div>
       <div class="form-grid">
@@ -1721,7 +1756,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
       <div class="cs-sec-title" style="margin-top:16px;margin-bottom:8px">Auto-Adjustment</div>
       <div class="form-grid">
         <div class="fg full"><div class="toggle-row"><span>Enable Auto-Adjust</span><label class="toggle"><input type="checkbox" id="df-auto" onchange="dflModule.onAutoChange()"/><span class="toggle-slider"></span></label></div></div>
-        <div class="fg" id="df-fill-grp"><label>Target Fill Rate (0–1)</label><input type="number" id="df-fill" min="0" max="1" step="0.01" placeholder="0.85"/></div>
+        <div class="fg" id="df-fill-grp"><label>Target Fill Rate (0�1)</label><input type="number" id="df-fill" min="0" max="1" step="0.01" placeholder="0.85"/></div>
         <div class="fg" id="df-step-grp"><label>Floor Step %</label><input type="number" id="df-step" min="0.1" step="0.1" placeholder="5.0"/></div>
       </div>
       <div class="fg full" style="margin-top:12px"><div class="toggle-row"><span>Active</span><label class="toggle"><input type="checkbox" id="df-active" checked/><span class="toggle-slider"></span></label></div></div>
@@ -1788,7 +1823,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
       <div class="cs-sec-title" style="margin-top:16px;margin-bottom:8px">Auto-Scaling</div>
       <div class="form-grid">
         <div class="fg full"><div class="toggle-row"><span>Auto-Scale for premium traffic</span><label class="toggle"><input type="checkbox" id="tp-auto" onchange="toModule.onAutoChange()"/><span class="toggle-slider"></span></label></div></div>
-        <div class="fg" id="tp-mult-grp"><label>Premium Multiplier (1.0–3.0×)</label><input type="number" id="tp-multiplier" min="1.0" max="3.0" step="0.1" placeholder="1.5"/></div>
+        <div class="fg" id="tp-mult-grp"><label>Premium Multiplier (1.0�3.0�)</label><input type="number" id="tp-multiplier" min="1.0" max="3.0" step="0.1" placeholder="1.5"/></div>
       </div>
       <div class="cs-sec-title" style="margin-top:16px;margin-bottom:8px">Per-Bidder Overrides <small style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">&#8212; optional</small></div>
       <div id="tp-overrides-list"></div>
@@ -1837,7 +1872,7 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
             <option value="user_experience">User Experience</option>
           </select>
         </div>
-        <div class="fg"><label>Min Fill % (0–100)</label><input type="number" id="pr-minfill" min="0" max="100" step="1" placeholder="80"/></div>
+        <div class="fg"><label>Min Fill % (0�100)</label><input type="number" id="pr-minfill" min="0" max="100" step="1" placeholder="80"/></div>
         <div class="fg full"><div class="toggle-row"><span>Active</span><label class="toggle"><input type="checkbox" id="pr-active" checked/><span class="toggle-slider"></span></label></div></div>
       </div>
     </div>
@@ -1856,11 +1891,69 @@ tbody td{padding:10px 12px;color:var(--text2);white-space:nowrap}
     <div class="confirm-actions"><button class="btn-cancel" onclick="genericConfirmObj.close()">Cancel</button><button class="btn-danger" onclick="genericConfirmObj.confirm()">Delete</button></div>
   </div>
 </div>
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script>
 // Navigation
 function toggleGroup(btn,childId){btn.classList.toggle('open');document.getElementById(childId).classList.toggle('open');}
-let _activeTab='supply';
+const NAV_MAP={
+  overview:'nav-dashboard',reports:'nav-reports',
+  publishers:'nav-publishers',adunits:'nav-adunits',
+  advertisers:'nav-advertisers',campaigns:'nav-campaigns',
+  bidders:'nav-bidders',programmatic:'nav-programmatic',
+  audiences:'nav-audiences',yield:'nav-yield','floor-rules':'nav-floor',
+  'pod-rules':'nav-pod','bidder-scorecards':'nav-bsc','qa-profiles':'nav-qa',
+  'timeout-profiles':'nav-timeout'
+};
+const PAGE_META={
+  overview:{title:'Dashboard',subtitle:'Live KPIs and health for supply & demand'},
+  reports:{title:'Reports',subtitle:'Slice delivery, revenue, and errors by dimension'},
+  publishers:{title:'Publishers',subtitle:'Supply partners and live delivery signals'},
+  adunits:{title:'Ad Units',subtitle:'Inventory & placements per publisher'},
+  advertisers:{title:'Advertisers',subtitle:'Demand partners and brands'},
+  campaigns:{title:'Campaigns',subtitle:'Flights, pacing, targeting, and creatives'},
+  bidders:{title:'Bidders',subtitle:'Legacy bidder analytics'},
+  programmatic:{title:'Dimension Breakdown',subtitle:'Programmatic performance by dimension'},
+  audiences:{title:'Audiences',subtitle:'Segments and taxonomy management'},
+  yield:{title:'Yield Rules',subtitle:'Pricing and delivery rule engine'},
+  'floor-rules':{title:'Dynamic Floors',subtitle:'Floor automation and overrides'},
+  'pod-rules':{title:'Pod Optimization',subtitle:'Video pod budgets and slot premiums'},
+  'bidder-scorecards':{title:'Bidder Scorecards',subtitle:'Quality & performance signals per bidder'},
+  'qa-profiles':{title:'Request QA Profiles',subtitle:'Request validation and QA routing'},
+  'timeout-profiles':{title:'Timeout Profiles',subtitle:'Time budgets & bidder overrides'},
+  default:{title:'Dashboard',subtitle:'Revenue Console'}
+};
+let _activePage='overview', _activeTab='supply';
+function _clearAllNav(){
+  document.querySelectorAll('.nav-btn,.nav-child-btn,.nav-item,.nav-group-header').forEach(b=>{
+    b.classList.remove('active');b.removeAttribute('aria-current');
+  });
+}
+function setActiveNav(page){
+  _clearAllNav();
+  const id=NAV_MAP[page];
+  if(!id) return;
+  const btn=document.getElementById(id);
+  if(btn){
+    btn.classList.add('active');btn.setAttribute('aria-current','page');
+    const grp=btn.closest('.nav-group');
+    if(grp){
+      grp.querySelector('.nav-group-header')?.classList.add('active','open');
+      grp.querySelector('.nav-group-children')?.classList.add('open');
+    }
+  }
+}
+function setPageHeader(page){
+  const meta=PAGE_META[page]||PAGE_META.default;
+  const h=document.getElementById('page-title'),p=document.getElementById('page-subtitle');
+  if(h) h.textContent=meta.title;
+  if(p) p.textContent=meta.subtitle;
+}
+function setRouteHash(page){
+  if(!page) return;
+  const hash='#'+page;
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+}
 function showTab(tab){
   _activeTab=tab;
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -1869,29 +1962,33 @@ function showTab(tab){
   document.getElementById('tbb-'+tab).classList.add('active');
   applyFilters();
 }
-function _clearAllNav(){
-  document.querySelectorAll('.nav-btn,.nav-child-btn,.nav-item').forEach(b=>b.classList.remove('active'));
-}
 function navToTab(tab,btn){
-  _clearAllNav();
-  if(btn) btn.classList.add('active');
+  const page=tab==='demand'?'advertisers':'publishers';
+  _activePage=page;
+  setActiveNav(page);
+  setPageHeader(page);
+  setRouteHash(page);
   showPage('tables');
   showTab(tab);
 }
 function navToPage(page,btn){
-  _clearAllNav();
-  if(btn) btn.classList.add('active');
+  _activePage=page;
+  setActiveNav(page);
+  setPageHeader(page);
+  setRouteHash(page);
   if(page==='publishers'){showPage('tables');showTab('supply');}
   else if(page==='advertisers'){showPage('tables');showTab('demand');}
   else showPage(page);
 }
 function setMainNav(btn,page){
-  _clearAllNav();
-  if(btn) btn.classList.add('active');
-  showPage(page||'overview');
+  _activePage=page||'overview';
+  setActiveNav(_activePage);
+  setPageHeader(_activePage);
+  setRouteHash(_activePage);
+  showPage(_activePage);
 }
 function showPage(p){
-  ['overview','tables','reports','adunits','campaigns','bidders','audiences','yield',
+  ['overview','tables','reports','adunits','campaigns','bidders','programmatic','audiences','yield',
    'bidder-scorecards','floor-rules','qa-profiles','timeout-profiles','pod-rules'].forEach(id=>{
     const el=document.getElementById('page-'+id);
     if(el) el.classList.toggle('active',id===p);
@@ -1901,6 +1998,7 @@ function showPage(p){
   if(p==='adunits') adUnitsRender();
   if(p==='campaigns') campaignsRender();
   if(p==='bidders') biddersRender();
+  if(p==='programmatic') progModule.refresh();
   if(p==='audiences') audiencesRender();
   if(p==='yield') yieldRender();
   if(p==='bidder-scorecards') bscRender();
@@ -1908,6 +2006,32 @@ function showPage(p){
   if(p==='qa-profiles') qaRender();
   if(p==='timeout-profiles') toRender();
   if(p==='pod-rules') podRender();
+}
+window.addEventListener('hashchange',()=>{
+  const page=(location.hash||'').replace('#','');
+  if(page && page!==_activePage && NAV_MAP[page]) navToPage(page,document.getElementById(NAV_MAP[page]));
+});
+// Toast + form helpers
+const _toastStack=document.getElementById('toast-stack');
+function showToast(msg,type='info'){
+  if(!_toastStack||!msg)return;
+  const el=document.createElement('div');
+  el.className='toast '+type;
+  el.textContent=msg;
+  _toastStack.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{el.classList.remove('show');setTimeout(()=>el.remove(),180);},3400);
+}
+function showFormError(id,err){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.textContent=(err&&err.message)||String(err)||'Request failed';
+  el.style.display='block';
+  showToast(el.textContent,'error');
+}
+function clearFormError(id){
+  const el=document.getElementById(id);
+  if(el){el.style.display='none';el.textContent='';}
 }
 // Overview helpers
 let _ovLive=false,_ovLiveTimer=null,_ovChart=null,_ovPeriod='today';
@@ -1940,7 +2064,7 @@ function setKpiCard(prefix,fmtFn,cur,prev){
   const el=document.getElementById(prefix+'-chg');
   if(!el)return;
   el.className='kpi-chg'+(cur>=prev?' up':' dn');
-  el.textContent=prev?(Math.abs((cur-prev)/prev*100).toFixed(2)+'% '+(cur>=prev?'▲':'▼')):'';}
+  el.textContent=prev?(Math.abs((cur-prev)/Math.max(prev,1)*100).toFixed(2)+'% '+(cur>=prev?'↑':'↓')):'';}
 async function updateOverview(){
   // Show skeleton placeholders while data loads
   const skelIds=['kpi-earn-val','kpi-ecpm-val','kpi-req-val','kpi-opp-val','kpi-imp-val','kpi-fill-val','kpi-rrate-val','kpi-vcr-val','kpi-view-val'];
@@ -1950,127 +2074,112 @@ async function updateOverview(){
   // Skeleton over chart
   const chartWrap=document.querySelector('.ov-chart-wrap');
   let skelChart=document.getElementById('skel-chart');
-  if(chartWrap&&!skelChart){skelChart=document.createElement('div');skelChart.id='skel-chart';skelChart.className='skel skel-chart';chartWrap.appendChild(skelChart);}
-  else if(skelChart)skelChart.style.display='';
+  if(chartWrap&&!skelChart){skelChart=document.createElement('div');skelChart.id='skel-chart';skelChart.className='skel skel-chart';chartWrap.appendChild(skelChart);} else if(skelChart){skelChart.style.display='';}
   // Fetch cumulative video pipeline stats
-  let vs=null;
-  try{const r=await fetch('/dashboard/stats/video');if(r.ok){const d=await r.json();vs=d.total||null;}}catch(e){console.warn('updateOverview: video stats fetch failed',e);}
-  const cumulReqs  = vs?(vs.ad_requests   ||0):0;
-  const cumulFills = vs?(vs.opportunities  ||0):0;
-  const cumulImps  = vs?(vs.impressions    ||0):0;
-  const cumulRev   = vs?(vs.revenue        ||0):0;
-  // Period scaling: backend holds cumulative totals; scale to selected window.
-  // Ratios (fill rate, eCPM, VCR) are period-independent and stay correct.
+  let stats=null,total={},startedAtSec=null;
+  try{
+    const r=await fetch('/dashboard/stats/video');
+    if(!r.ok) throw new Error(''+r.status);
+    stats=await r.json();
+    total=stats.total||{};
+    startedAtSec=stats.started_at||null;
+  }catch(e){
+    console.warn('updateOverview: video stats fetch failed',e);
+    showToast('Gagal memuat statistik video: '+(e?.message||'unknown'),'error');
+  }
+  const nowMs=Date.now();
+  const uptimeHours=Math.max(1, startedAtSec? (nowMs/1000 - startedAtSec)/3600 : 24);
+  const rate={
+    req: (total.ad_requests   ||0)/uptimeHours,
+    fill:(total.opportunities ||0)/uptimeHours,
+    imp: (total.impressions   ||0)/uptimeHours,
+    rev: (total.revenue       ||0)/uptimeHours,
+    comp:(total.completes     ||0)/uptimeHours
+  };
   const PERIOD_CFG={
-    today:     {scale:1,    prevScale:0.82, label:'Today',      prevLabel:'Yesterday (EST)'},
-    yesterday: {scale:0.82, prevScale:0.74, label:'Yesterday',  prevLabel:'2 Days Ago (EST)'},
-    week:      {scale:7,    prevScale:6.1,  label:'This Week',  prevLabel:'Prior Week (EST)'},
-    month:     {scale:30,   prevScale:26,   label:'This Month', prevLabel:'Prior Month (EST)'}
+    today:     {hours:24,    prevHours:24, label:'24h',     prevLabel:'24h sebelumnya'},
+    yesterday: {hours:24,    prevHours:24, label:'Kemarin', prevLabel:'2 hari lalu'},
+    week:      {hours:24*7,  prevHours:24*7, label:'7 hari', prevLabel:'7 hari sebelumnya'},
+    month:     {hours:24*30, prevHours:24*30, label:'30 hari', prevLabel:'30 hari sebelumnya'}
   };
   const cfg=PERIOD_CFG[_ovPeriod]||PERIOD_CFG.today;
-  const totalReqs  = cumulReqs *cfg.scale;
-  const totalFills = cumulFills*cfg.scale;
-  const totalImps  = cumulImps *cfg.scale;
-  const totalRev   = cumulRev  *cfg.scale;
-  const pReqs  = cumulReqs *cfg.prevScale;
-  const pFills = cumulFills*cfg.prevScale;
-  const pImps  = cumulImps *cfg.prevScale;
-  const pRev   = cumulRev  *cfg.prevScale;
+  const hoursCur=Math.min(cfg.hours, uptimeHours);
+  const hoursPrev=Math.min(cfg.prevHours, Math.max(uptimeHours-hoursCur, cfg.prevHours));
+  const cur={
+    reqs:  rate.req*hoursCur,
+    fills: rate.fill*hoursCur,
+    imps:  rate.imp*hoursCur,
+    rev:   rate.rev*hoursCur,
+    comps: rate.comp*hoursCur
+  };
+  const prev={
+    reqs:  rate.req*hoursPrev,
+    fills: rate.fill*hoursPrev,
+    imps:  rate.imp*hoursPrev,
+    rev:   rate.rev*hoursPrev,
+    comps: rate.comp*hoursPrev
+  };
   // Update KPI prev-row labels to match the selected period
   document.querySelectorAll('.kpi-prev-row span:first-child').forEach(el=>el.textContent=cfg.prevLabel);
   // Update chart title
   const chartTitle=document.querySelector('.ov-chart-title');
   if(chartTitle)chartTitle.textContent='Traffic Overview — '+cfg.label+' vs '+cfg.prevLabel;
-  // eCPM: revenue per 1000 opportunities (VAST served = billing event).
-  // Impressions are player-confirmed renders and may be lower; using them
-  // for eCPM would over-inflate the number when beacon fire rate < 100%.
-  const ecpm=totalFills>0?totalRev/totalFills*1000:0;
-  const pEcpm=pFills>0?pRev/pFills*1000:0;
-  // Fill Rate = Opportunities / AdRequests
-  const fill=totalReqs>0?totalFills/totalReqs*100:0;
-  const pFill=pReqs>0?pFills/pReqs*100:0;
-  // Response Rate = Impressions / Opportunities (player render confirmation rate)
-  const rrate=totalFills>0?totalImps/totalFills*100:0;
-  const pRrate=pFills>0?pImps/pFills*100:0;
+  // eCPM: Revenue / Impressions (fallback to fills) * 1000
+  const ecpm= (cur.imps>0?cur.rev/cur.imps:(cur.fills>0?cur.rev/cur.fills:0))*1000;
+  const pEcpm=(prev.imps>0?prev.rev/prev.imps:(prev.fills>0?prev.rev/prev.fills:0))*1000;
+  // Fill Rate = Opportunities / Ad Requests * 100
+  const fill=cur.reqs>0?cur.fills/cur.reqs*100:0;
+  const pFill=prev.reqs>0?prev.fills/prev.reqs*100:0;
+  // Render Rate = Impressions / Opportunities * 100
+  const rrate=cur.fills>0?cur.imps/cur.fills*100:0;
+  const pRrate=prev.fills>0?prev.imps/prev.fills*100:0;
   // Populate KPI cards
-  setKpiCard('kpi-earn',fmtC,totalRev,pRev);
+  setKpiCard('kpi-earn',fmtC,cur.rev,prev.rev);
   setKpiCard('kpi-ecpm',fmtC,ecpm,pEcpm);
-  setKpiCard('kpi-req',fmtK,totalReqs,pReqs);
-  setKpiCard('kpi-opp',fmtK,totalFills,pFills);
-  setKpiCard('kpi-imp',fmtK,totalImps,pImps);
+  setKpiCard('kpi-req',fmtK,cur.reqs,prev.reqs);
+  setKpiCard('kpi-opp',fmtK,cur.fills,prev.fills);
+  setKpiCard('kpi-imp',fmtK,cur.imps,prev.imps);
   setKpiCard('kpi-fill',fmtP,fill,pFill);
   setKpiCard('kpi-rrate',fmtP,rrate,pRrate);
-  // Tracking-based measurement metrics (VCR, Viewability)
-  // VCR: use server-calculated value from videoStats when available (most accurate,
-  // based on all tracking events); fall back to tracking events endpoint if needed.
-  let vcr=0,pVCR=0,viewability=0,pViewability=0;
-  if(vs&&vs.impressions>0){
-    vcr=vs.vcr_pct||0;
-    pVCR=vcr*0.88;
-    viewability=Math.min(vcr*1.15,100);
-    pViewability=viewability*0.92;
-  } else {
-    try{
-      const tr=await fetch('/video/tracking/events');
-      if(tr.ok){
-        const tevts=(await tr.json())||[];
-        if(Array.isArray(tevts)){
-          const impressions=tevts.filter(e=>e.event==='impression').length;
-          const completes=tevts.filter(e=>e.event==='complete').length;
-          vcr=impressions>0?completes/impressions*100:0;
-          pVCR=vcr*0.88;
-          viewability=Math.min(vcr*1.15,100);
-          pViewability=viewability*0.92;
-        }
-      }
-    }catch(e){console.warn('updateOverview: tracking events fetch failed',e);}
-  }
+  // VCR + viewability proxies
+  let vcr=cur.imps>0?cur.comps/cur.imps*100:0;
+  let pVCR=prev.imps>0?prev.comps/prev.imps*100:vcr;
+  const viewability=Math.min(vcr*1.1,100);
+  const pViewability=Math.min(pVCR*1.1,100);
   setKpiCard('kpi-vcr',fmtP,vcr,pVCR);
   setKpiCard('kpi-view',fmtP,viewability,pViewability);
   // Update timestamp
   const now=new Date();
-  setText('ov-updated-time','Last updated at '+now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+' (Local time) — '+cfg.label);
+  setText('ov-updated-time','Last updated at '+now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:'UTC'})+' UTC — '+cfg.label);
   // Remove skeleton overlays
   const sc=document.getElementById('skel-chart');if(sc)sc.style.display='none';
   // Chart
-  ovBuildChart(totalReqs,totalFills,totalImps,cfg.scale);
+  ovBuildChart(cur.reqs,cur.fills,cur.imps,hoursCur);
   // Async: load exchange optimization status
   _loadXoptStatus();
 }
-function ovBuildChart(reqs,fills,imps,scale){
+
+function ovBuildChart(reqs,fills,imps,hours){
   if(typeof Chart==='undefined')return;
   const wrap=document.querySelector('.ov-chart-wrap');
   const ctx=document.getElementById('ov-chart');
   if(!ctx||!wrap)return;
   if(_ovChart){_ovChart.destroy();_ovChart=null;}
-  // For week/month, show daily averages (divide by scale) so the chart y-axis
-  // stays readable; tooltip labels clarify the period.
-  const isDailyAvg=(scale&&scale>1);
-  const displayReqs  = isDailyAvg ? reqs/scale  : reqs;
-  const displayFills = isDailyAvg ? fills/scale : fills;
-  const displayImps  = isDailyAvg ? imps/scale  : imps;
-  // 13 hourly buckets 00:00–24:00
-  const labels=['00','02','04','06','08','10','12','14','16','18','20','22','24'];
-  const n=labels.length;
-  // Distribute totals across hours with a bell-curve shape (peak midday)
-  const spread=(total,i)=>Math.max(0,Math.round(total/n*(0.3+Math.sin(i/(n-1)*Math.PI)*1.5)));
-  const PERIOD_CFG={today:{scale:1,prevScale:0.82},yesterday:{scale:0.82,prevScale:0.74},week:{scale:7,prevScale:6.1},month:{scale:30,prevScale:26}};
-  const cfg=PERIOD_CFG[_ovPeriod]||PERIOD_CFG.today;
-  const prevRatio=cfg.prevScale/cfg.scale; // ratio of prev-period to current-period daily avg
-  const reqPts=labels.map((_,i)=>spread(displayReqs,i));
-  const fillPts=labels.map((_,i)=>spread(displayFills,i));
-  const impPts=labels.map((_,i)=>spread(displayImps,i));
-  const prevReqPts=labels.map((_,i)=>spread(displayReqs*prevRatio,i));
+  const labels=['00','04','08','12','16','20','24'];
+  const buckets=labels.length;
+  const bucketHours=Math.max(1,hours/buckets);
+  const reqPts = Array.from({length:buckets},()=>Math.round(reqs/Math.max(hours,1)*bucketHours));
+  const fillPts= Array.from({length:buckets},()=>Math.round(fills/Math.max(hours,1)*bucketHours));
+  const impPts = Array.from({length:buckets},()=>Math.round(imps/Math.max(hours,1)*bucketHours));
   const fmtTick=v=>v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':String(v);
   _ovChart=new Chart(ctx,{
     type:'line',
     data:{
       labels,
       datasets:[
-        {label:'Requests (Yesterday)',data:prevReqPts,borderColor:'#cbd5e1',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:.4,borderDash:[4,3]},
-        {label:'Ad Requests',data:reqPts,borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,.07)',fill:true,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,tension:.4},
-        {label:'Opportunities',data:fillPts,borderColor:'#16a34a',backgroundColor:'transparent',borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:.4},
-        {label:'Impressions',data:impPts,borderColor:'#f59e0b',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,pointHoverRadius:4,tension:.4,borderDash:[2,2]}
+        {label:'Ad Requests',data:reqPts,borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,.07)',fill:true,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,tension:.35},
+        {label:'Opportunities',data:fillPts,borderColor:'#0ea5e9',backgroundColor:'rgba(14,165,233,.06)',fill:true,borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:.35},
+        {label:'Impressions',data:impPts,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.08)',fill:true,borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:.35}
       ]
     },
     options:{
@@ -2078,1798 +2187,17 @@ function ovBuildChart(reqs,fills,imps,scale){
       maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmtTick(c.parsed.y)}`}}
+        legend:{display:true,position:'bottom',labels:{usePointStyle:true,boxWidth:12}},
+        tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${fmtTick(ctx.parsed.y)}`}}
       },
       scales:{
-        x:{grid:{color:'rgba(0,0,0,.04)'},ticks:{font:{size:11},color:'#94a3b8',maxRotation:0}},
-        y:{grid:{color:'rgba(0,0,0,.04)'},min:0,ticks:{font:{size:11},color:'#94a3b8',callback:fmtTick,maxTicksLimit:6}}
+        y:{beginAtZero:true,ticks:{callback:fmtTick}},
+        x:{grid:{display:false}}
       }
     }
   });
 }
-function onCreateNew(){if(_activeTab==='supply') pubModule.openCreate(); else advModule.openCreate();}
 
-// Exchange Optimization Checklist — async status loader
-async function _loadXoptStatus(){
-  let cfg={timeout_default:null,timeout_max:null,conn_per_host:null,gzip:null};
-  try{
-    const r=await fetch('/dashboard/config');
-    if(r.ok){const d=await r.json();
-      cfg.timeout_default=d.auction_timeouts_ms?.default??null;
-      cfg.timeout_max=d.auction_timeouts_ms?.max??null;
-      cfg.conn_per_host=d.http_client?.max_idle_connections_per_host??null;
-      cfg.gzip=d.compression?.response?.enable_gzip??null;
-    }
-  }catch(e){/* config endpoint may not be wired; show defaults from pbs.yaml */
-    cfg={timeout_default:3000,timeout_max:5000,conn_per_host:10,gzip:false};
-  }
-  // Timeout card
-  const tDef=cfg.timeout_default??3000;
-  const tOk=tDef>0&&tDef<=1000;
-  const tWarn=tDef>1000&&tDef<=2000;
-  document.getElementById('xopt-timeout-icon').className='xopt-icon '+(tOk?'ok':tWarn?'warn':'warn');
-  document.getElementById('xopt-timeout-icon').textContent=tOk?'✓':'⚠';
-  document.getElementById('xopt-timeout-desc').textContent='Default auction timeout: '+(tDef||'0')+'ms. '+(tOk?'Optimal for programmatic \u2014 DSPs respond <500ms.':tDef<=2000?'Consider reducing to 800ms for lower latency.':'High latency risk \u2014 recommend \u2264 1000ms.');
-  document.getElementById('xopt-timeout-badge').className='xopt-badge '+(tOk?'ok':tWarn?'warn':'warn');
-  document.getElementById('xopt-timeout-badge').textContent=tOk?'OPTIMAL':tWarn?'REVIEW':'HIGH';
-  // Connection pool card
-  const cph=cfg.conn_per_host??10;
-  const cOk=cph>=50;
-  const cWarn=cph>=20&&cph<50;
-  document.getElementById('xopt-connpool-icon').className='xopt-icon '+(cOk?'ok':cWarn?'warn':'warn');
-  document.getElementById('xopt-connpool-icon').textContent=cOk?'✓':'⚠';
-  document.getElementById('xopt-connpool-desc').textContent='Max idle connections/host: '+cph+'. '+(cOk?'Healthy pool \u2014 bidder keep-alive reuse is efficient.':cph>=20?'Moderate pool. Increase to 50+ per high-traffic bidder endpoint.':'Low pool size \u2014 new TCP handshakes per bidder will add ~20ms latency.');
-  document.getElementById('xopt-connpool-badge').className='xopt-badge '+(cOk?'ok':cWarn?'warn':'warn');
-  document.getElementById('xopt-connpool-badge').textContent=cOk?'OPTIMAL':cWarn?'REVIEW':'LOW';
-  // Gzip card
-  const gz=cfg.gzip===true;
-  document.getElementById('xopt-gzip-icon').className='xopt-icon '+(gz?'ok':'warn');
-  document.getElementById('xopt-gzip-icon').textContent=gz?'✓':'⚠';
-  document.getElementById('xopt-gzip-desc').textContent=gz?'Gzip encoding enabled \u2014 bid responses ~70% smaller, saves DSP bandwidth.':'Gzip disabled. Enable compression.response.enable_gzip to reduce response sizes ~70%.';
-  document.getElementById('xopt-gzip-badge').className='xopt-badge '+(gz?'ok':'warn');
-  document.getElementById('xopt-gzip-badge').textContent=gz?'ACTIVE':'DISABLED';
-}
-
-// Helpers
-function fmt(n){return n==null?'0':Number(n).toLocaleString();}
-function fmtC(n){if(n==null||n===0) return '$0.00'; return '$'+Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
-function fmtP(n){return n==null?'0.0%':Number(n).toFixed(1)+'%';}
-function setText(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
-function setField(id,val){const e=document.getElementById(id);if(e)e.value=val??'';}
-function getField(id){const e=document.getElementById(id);return e?e.value.trim():'';}
-function getCheck(id){const e=document.getElementById(id);return e?e.checked:false;}
-function setCheck(id,val){const e=document.getElementById(id);if(e)e.checked=!!val;}
-function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function statusBadge(status){
-  const isActive=status==='active'||status==='Live';
-  const cls=isActive?'bdg-live':status==='limited'?'bdg-limited':status==='paused'?'bdg-paused':'bdg-archived';
-  const label=isActive?'Live':status==='paused'?'Paused':status==='limited'?'Limited':status||'Paused';
-  return `<span class="bdg ${cls}">${escHtml(label)}</span>`;
-}
-function swHtml(id,checked,onch){
-  return `<span class="sw-wrap"><label class="sw"><input type="checkbox" ${checked?'checked':''} onchange="${onch}('${id}',this.checked)"><span class="sw-track"></span></label></span>`;
-}
-
-// Filters
-function getFilters(){
-  return{
-    text:getField('filter-text').toLowerCase(),
-    status:getField('filter-status'),
-    archived:document.getElementById('show-archived').checked,
-    delivery:getField('filter-delivery'),
-    group:getField('filter-dgroup')
-  };
-}
-function matchRow(row,f){
-  const q=f.text;
-  const ok1=!q||(row.id||'').toLowerCase().includes(q)||(row.name||'').toLowerCase().includes(q)||(row.domain||'').toLowerCase().includes(q);
-  const on=row.status==='active';
-  const ok2=f.status==='all'||(f.status==='on'?on:!on);
-  const ds=on?'live':'paused';
-  const ok3=f.delivery==='all'||ds===f.delivery;
-  const ok4=f.archived||row.status!=='archived';
-  const ok5=f.group==='all'||(f.group==='healthy'&&on)||(f.group==='warning'&&row.status==='limited')||(f.group==='inactive'&&!on);
-  return ok1&&ok2&&ok3&&ok4&&ok5;
-}
-function applyFilters(){
-  if(typeof pubModule!=='undefined') pubModule.renderTable();
-  if(typeof advModule!=='undefined') advModule.renderTable();
-}
-window.togglePub=function(id,v){pubModule&&pubModule.toggle(id,v);};
-window.toggleAdv=function(id,v){advModule&&advModule.toggle(id,v);};
-
-// genericConfirmObj
-const genericConfirmObj=(()=>{
-  let _cb=null;
-  const ov=document.getElementById('genericConfirm');
-  ov.addEventListener('click',e=>{if(e.target===ov)close();});
-  function open(msg,cb){_cb=cb;setText('genericConfirmMsg',msg);ov.classList.add('open');}
-  function close(){ov.classList.remove('open');_cb=null;}
-  function confirm(){const c=_cb;close();if(c)c();}
-  return{open,close,confirm};
-})();
-
-// videoModule
-const videoModule=(()=>{
-  let all=[],editId=null,delId=null,activeVTab='basic';
-  // Tab management
-  function switchTab(tab,btn){
-    activeVTab=tab;
-    document.querySelectorAll('.camp-tab[data-vtab]').forEach(b=>b.classList.remove('active'));
-    if(btn)btn.classList.add('active');
-    document.querySelectorAll('.vtab-pane').forEach(p=>p.style.display='none');
-    const pane=document.getElementById('vtab-'+tab);if(pane)pane.style.display='';
-    if(tab==='tagconstructor')buildTag();
-    if(tab==='aligndemand')renderDemandRows();
-    if(tab==='extstats')_buildExtPreview();
-  }
-  function prevStep(){const tabs=['basic','advanced','tagconstructor','aligndemand','extstats'];const i=tabs.indexOf(activeVTab);if(i>0){const t=tabs[i-1];switchTab(t,document.querySelector(`.camp-tab[data-vtab="${t}"]`));}}
-  function nextStep(){const tabs=['basic','advanced','tagconstructor','aligndemand','extstats'];const i=tabs.indexOf(activeVTab);if(i<tabs.length-1){const t=tabs[i+1];switchTab(t,document.querySelector(`.camp-tab[data-vtab="${t}"]`));}}
-  function saveMenu(e){e.stopPropagation();}
-  // Integration type / environment
-  function onIntTypeChange(){}
-  function envFields(env){
-    const ctv=env==='ctv';
-    ['vf-channel-group','vf-network-group'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=ctv?'':'none';});
-    ['vf-bundle-group','vf-appname-group'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=ctv?'none':'';});
-  }
-  // Pricing type
-  function onPricingChange(){
-    const v=document.querySelector('input[name="vf-pricing-type"]:checked')?.value||'floor_price';
-    const revRow=document.querySelector('#vf-rev-share')?.closest('.src-pricing-row');
-    if(revRow)revRow.style.display=v==='share_revenue'?'':'none';
-  }
-  // Protocols
-  function getProtos(){return[...document.querySelectorAll('.vf-proto:checked')].map(c=>parseInt(c.value));}
-  function setProtos(arr){const active=arr&&arr.length?arr:[2,3];document.querySelectorAll('.vf-proto').forEach(c=>c.checked=active.includes(parseInt(c.value)));}
-  // VAST tag preview
-  function updateVastPreview(id){
-    if(!id){document.getElementById('vf-vast-tag-preview').textContent='/video/vast?placement_id=[replace_me]';return;}
-    const base=window.location.origin;
-    const pubId=document.getElementById('vf-publisher-id')?.value||'';
-    let url=`${base}/video/vast?placement_id=${encodeURIComponent(id)}`;
-    if(pubId)url+=`&publisher_id=${encodeURIComponent(pubId)}`;
-    document.getElementById('vf-vast-tag-preview').textContent=url;
-  }
-  function onPubChange(){updateVastPreview(editId);if(activeVTab==='tagconstructor')buildTag();}
-  function copyVastTag(){const el=document.getElementById('vf-vast-tag-preview');if(el)navigator.clipboard.writeText(el.textContent);}
-  // Tag constructor
-  function buildTag(){
-    const id=editId||'[placement_id]';
-    const w=document.getElementById('vftc-width')?.value||'640';
-    const h=document.getElementById('vftc-height')?.value||'480';
-    const sel=document.getElementById('vf-publisher-id');
-    const pubId=sel?.value||'';
-    const pName=pubId&&sel?sel.options[sel.selectedIndex]?.text:'— none —';
-    const pLabel=document.getElementById('vftc-pub-label');if(pLabel)pLabel.textContent=pName;
-    const customDomain=(document.getElementById('vftc-domain')?.value||'').replace(/\/+$/,'');
-    const base=customDomain||window.location.origin;
-    let tag=`${base}/video/vast?placement_id=${encodeURIComponent(id)}`;
-    if(pubId)tag+=`&publisher_id=${encodeURIComponent(pubId)}`;
-    tag+=`&w=${encodeURIComponent(w)}&h=${encodeURIComponent(h)}&cb=[CACHEBUSTER]&url=[URL]`;
-    const p=document.getElementById('vftc-preview');if(p)p.textContent=tag;
-    let ortbTag=`${base}/video/ortb?placement_id=${encodeURIComponent(id)}`;
-    if(pubId)ortbTag+=`&publisher_id=${encodeURIComponent(pubId)}`;
-    ortbTag+=`&w=${encodeURIComponent(w)}&h=${encodeURIComponent(h)}&cb=[CACHEBUSTER]&url=[URL]`;
-    const po=document.getElementById('vftc-ortb-preview');if(po)po.textContent=ortbTag;
-  }
-  function copyBuiltTag(){const p=document.getElementById('vftc-preview');if(p)navigator.clipboard.writeText(p.textContent);}
-  function copyBuiltOrtbTag(){const p=document.getElementById('vftc-ortb-preview');if(p)navigator.clipboard.writeText(p.textContent);}
-  // Demand links (campaign routing)
-  let _demandLinks=[];
-  function addDemandRow(id){_demandLinks.push(id||'');renderDemandRows();}
-  function removeDemandRow(i){_demandLinks.splice(i,1);renderDemandRows();}
-  function renderDemandRows(){
-    const c=document.getElementById('vf-demand-rows');if(!c)return;
-    const camps=typeof campModule!=='undefined'?campModule.list():[];
-    if(!_demandLinks.length){c.innerHTML='<div style="color:var(--muted);font-size:13px;padding:6px 0;margin-bottom:6px">No campaigns linked yet.</div>';return;}
-    c.innerHTML=_demandLinks.map((cid,i)=>`<div class="align-row">
-      <select onchange="videoModule._setDemandLink(${i},this.value)">
-        <option value="">&#8211; select campaign &#8211;</option>
-        ${camps.map(camp=>`<option value="${camp.id}"${cid===camp.id?' selected':''}>${escHtml(camp.name)}</option>`).join('')}
-      </select>
-      <button class="btn-rm" onclick="videoModule.removeDemandRow(${i})">&#215; Remove</button>
-    </div>`).join('');
-  }
-  function _setDemandLink(i,v){if(i<_demandLinks.length)_demandLinks[i]=v;}
-  function getDemandLinks(){return [..._demandLinks].filter(Boolean);}
-  function setDemandLinks(arr){_demandLinks=arr&&arr.length?[...arr]:[];renderDemandRows();}
-  // External statistics (third-party API report)
-  function _extDefDates(){const now=new Date();const fr=new Date(now.getFullYear(),now.getMonth()-1,1);const to=new Date(now.getFullYear(),now.getMonth(),0);const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;return{from:fmt(fr),to:fmt(to)};}
-  function setExtStats(obj){
-    const cfg=obj||{};const dd=_extDefDates();
-    setField('vf-es-provider',cfg.provider||'');setField('vf-es-url',cfg.url||'');
-    setField('vf-es-apikey',cfg.api_key||'');setField('vf-es-idparam',cfg.id_param||'id');
-    setField('vf-es-idval',cfg.id_value||'');setField('vf-es-from',cfg.date_from||dd.from);setField('vf-es-to',cfg.date_to||dd.to);
-    const r=document.getElementById('vf-es-result');if(r)r.style.display='none';
-    _buildExtPreview();
-  }
-  function getExtStats(){
-    return{provider:getField('vf-es-provider'),url:getField('vf-es-url'),api_key:getField('vf-es-apikey'),
-      id_param:getField('vf-es-idparam')||'id',id_value:getField('vf-es-idval'),
-      date_from:getField('vf-es-from'),date_to:getField('vf-es-to')};
-  }
-  function _buildExtPreview(){
-    const base=getField('vf-es-url');const p=document.getElementById('vf-es-preview');if(!p)return;
-    if(!base){p.textContent='\u2014';return;}
-    const params=[];const key=getField('vf-es-apikey');const idParam=getField('vf-es-idparam')||'id';
-    const idVal=getField('vf-es-idval')||(editId||'[record_id]');
-    const from=getField('vf-es-from');const to=getField('vf-es-to');
-    if(key)params.push(`api_key=${encodeURIComponent(key)}`);
-    params.push(`${encodeURIComponent(idParam)}=${encodeURIComponent(idVal)}`);
-    if(from)params.push(`from=${encodeURIComponent(from)}`);if(to)params.push(`to=${encodeURIComponent(to)}`);
-    p.textContent=base+(params.length?(base.includes('?')?'&':'?')+params.join('&'):'');
-  }
-  function _copyExtPreview(){const el=document.getElementById('vf-es-preview');if(el)navigator.clipboard.writeText(el.textContent);}
-  async function testExtStats(){
-    const url=document.getElementById('vf-es-preview')?.textContent;
-    if(!url||url==='\u2014'){alert('Please fill in the Base API URL first.');return;}
-    const res_el=document.getElementById('vf-es-result');const body_el=document.getElementById('vf-es-result-body');
-    res_el.style.display='';body_el.textContent='Fetching\u2026';
-    try{
-      const r=await fetch('/dashboard/ext-stats/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-      const txt=await r.text();try{body_el.textContent=JSON.stringify(JSON.parse(txt),null,2);}catch{body_el.textContent=txt;}
-    }catch(e){body_el.textContent='Error: '+e.message;}
-  }
-  // Data helpers
-  async function fetchAll(){try{const r=await fetch('/dashboard/video');if(!r.ok)throw r;all=(await r.json()).entries||[];}catch{all=[];}return all;}
-  function list(){return all;}
-  function pubSel(sel){
-    const s=document.getElementById('vf-publisher-id');if(!s)return;
-    const pl=typeof pubModule!=='undefined'?pubModule.list():[];
-    s.innerHTML='<option value="">&#8211; no publisher &#8211;</option>'+pl.map(p=>`<option value="${p.id}"${sel===p.id?' selected':''}>${escHtml(p.name)}</option>`).join('');
-  }
-  function _resetTabs(){
-    activeVTab='basic';
-    document.querySelectorAll('.camp-tab[data-vtab]').forEach((t,i)=>t.classList.toggle('active',i===0));
-    document.querySelectorAll('.vtab-pane').forEach((p,i)=>p.style.display=i===0?'':'none');
-  }
-  function clearForm(){
-    ['vf-name','vf-channel','vf-network','vf-bundle','vf-appname','vf-apis','vf-bidders'].forEach(id=>setField(id,''));
-    setField('vf-env','ctv');setField('vf-placement','instream');
-    setField('vf-min-dur','15');setField('vf-max-dur','30');setField('vf-pod-dur','120');setField('vf-max-pods','4');
-    setField('vf-floor','');setField('vf-adv-floor','');setField('vf-rev-share','80');
-    setField('vf-imps-daily','');setField('vf-imps-hourly','');setField('vf-qps','');setField('vf-timeout','500');
-    setField('vf-status-select','active');
-    setProtos([2,3]);
-    const fp=document.querySelector('input[name="vf-pricing-type"][value="floor_price"]');if(fp)fp.checked=true;
-    const ob=document.querySelector('input[name="vf-inttype"][value="open_rtb"]');if(ob)ob.checked=true;
-    envFields('ctv');onPricingChange();
-    setDemandLinks([]);setExtStats({});
-    const e=document.getElementById('videoFormError');if(e){e.style.display='none';e.textContent='';}
-  }
-  function openCreate(pid){
-    editId=null;clearForm();pubSel(pid||'');
-    if(pid)setField('vf-publisher-id',pid);
-    _resetTabs();updateVastPreview(null);
-    document.getElementById('videoModal').classList.add('open');
-  }
-  function openEdit(id){
-    const e=all.find(x=>x.id===id);if(!e)return;
-    editId=id;clearForm();pubSel(e.publisher_id||'');
-    setField('vf-name',e.name);
-    setField('vf-env',e.environment||'ctv');
-    setField('vf-placement',e.placement||'instream');
-    setField('vf-channel',e.channel_name||'');setField('vf-network',e.network_name||'');
-    setField('vf-bundle',e.bundle_id||'');setField('vf-appname',e.app_name||'');
-    setField('vf-min-dur',e.min_duration||'');setField('vf-max-dur',e.max_duration||'');
-    setField('vf-pod-dur',e.pod_duration_sec||'');setField('vf-max-pods',e.max_pods||'');
-    setProtos(e.protocols||[2,3]);
-    setField('vf-apis',(e.apis||[]).join(','));
-    setField('vf-floor',e.floor_cpm||'');setField('vf-adv-floor',e.adv_floor_cpm||'');
-    setField('vf-rev-share',e.rev_share||80);
-    const pt=e.pricing_type||'floor_price';const ptEl=document.querySelector(`input[name="vf-pricing-type"][value="${pt}"]`);if(ptEl)ptEl.checked=true;
-    const it=e.integration_type||'open_rtb';const itEl=document.querySelector(`input[name="vf-inttype"][value="${it}"]`);if(itEl)itEl.checked=true;
-    setField('vf-bidders',(e.bidders||[]).join(','));
-    setField('vf-status-select',e.active?'active':'paused');
-    setField('vf-imps-daily',e.imps_daily_cap||'');setField('vf-imps-hourly',e.imps_hourly_cap||'');
-    setField('vf-qps',e.qps||'');setField('vf-timeout',e.timeout_ms||500);
-    envFields(e.environment||'ctv');onPricingChange();
-    setDemandLinks(e.demand_links||[]);
-    setExtStats(e.ext_stats||[]);
-    _resetTabs();updateVastPreview(id);
-    document.getElementById('videoModal').classList.add('open');
-  }
-  function closeModal(){document.getElementById('videoModal').classList.remove('open');editId=null;}
-  async function save(){
-    const err=document.getElementById('videoFormError');err.style.display='none';
-    const protos=getProtos();
-    const intType=document.querySelector('input[name="vf-inttype"]:checked')?.value||'open_rtb';
-    const pricingType=document.querySelector('input[name="vf-pricing-type"]:checked')?.value||'floor_price';
-    const pl={
-      name:getField('vf-name'),environment:getField('vf-env'),placement:getField('vf-placement'),
-      channel_name:getField('vf-channel'),network_name:getField('vf-network'),
-      bundle_id:getField('vf-bundle'),app_name:getField('vf-appname'),
-      min_duration:parseInt(getField('vf-min-dur'),10)||0,max_duration:parseInt(getField('vf-max-dur'),10)||30,
-      pod_duration_sec:parseInt(getField('vf-pod-dur'),10)||0,max_pods:parseInt(getField('vf-max-pods'),10)||0,
-      protocols:protos,
-      apis:getField('vf-apis').split(',').map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n)),
-      floor_cpm:parseFloat(getField('vf-floor'))||0,
-      adv_floor_cpm:parseFloat(getField('vf-adv-floor'))||0,
-      rev_share:parseFloat(getField('vf-rev-share'))||80,
-      pricing_type:pricingType,integration_type:intType,
-      bidders:getField('vf-bidders').split(',').map(s=>s.trim()).filter(Boolean),
-      active:getField('vf-status-select')!=='paused',
-    publisher_id:getField('vf-publisher-id')
-      // derive campaign_id from first demand_link for server-side primary routing
-      ,campaign_id:(getDemandLinks()[0]||''),
-      imps_daily_cap:parseInt(getField('vf-imps-daily'))||0,imps_hourly_cap:parseInt(getField('vf-imps-hourly'))||0,
-      qps:parseInt(getField('vf-qps'))||0,timeout_ms:parseInt(getField('vf-timeout'))||500,
-      demand_links:getDemandLinks(),ext_stats:getExtStats()
-    };
-    try{
-      const url=editId?`/dashboard/video/${editId}`:'/dashboard/video';
-      const res=await fetch(url,{method:editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pl)});
-      if(!res.ok){const e=await res.json();throw new Error(e.error||res.status);}
-      closeModal();await fetchAll();
-      if(typeof pubModule!=='undefined'&&pubModule.renderTable)pubModule.renderTable();
-      adUnitsRender();
-    }catch(e){err.textContent=e.message;err.style.display='block';}
-  }
-  function openDelete(id,name){delId=id;setText('videoConfirmMsg',`Delete "${name}"?`);document.getElementById('videoConfirm').classList.add('open');}
-  function closeConfirm(){document.getElementById('videoConfirm').classList.remove('open');delId=null;}
-  async function confirmDelete(){if(!delId)return;try{await fetch(`/dashboard/video/${delId}`,{method:'DELETE'});}finally{closeConfirm();await fetchAll();if(typeof pubModule!=='undefined'&&pubModule.renderTable)pubModule.renderTable();}}
-  document.getElementById('videoModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
-  document.getElementById('videoConfirm').addEventListener('click',e=>{if(e.target===e.currentTarget)closeConfirm();});
-  fetchAll();
-  return{fetchAll,list,openCreate,openEdit,closeModal,save,openDelete,closeConfirm,confirmDelete,switchTab,envFields,onIntTypeChange,onPricingChange,onPubChange,prevStep,nextStep,saveMenu,copyVastTag,buildTag,copyBuiltTag,copyBuiltOrtbTag,addDemandRow,removeDemandRow,renderDemandRows,_setDemandLink,setDemandLinks,setExtStats,getExtStats,_buildExtPreview,_copyExtPreview,testExtStats};
-})();
-
-// pubModule
-const pubModule=(()=>{
-  let all=[],editId=null,_vstats={},_vtotal={};
-  async function _loadVideoStats(){try{const r=await fetch('/dashboard/stats/video');if(r.ok){const d=await r.json();_vstats=d.by_publisher||{};_vtotal=d.total||{};}}catch{_vstats={};_vtotal={};}}
-  async function fetchAll(){try{all=((await(await fetch('/dashboard/publishers')).json()).entries)||[];}catch{all=[];}
-    await _loadVideoStats();renderTable();}
-  function list(){return all;}
-  function renderTable(){
-    const f=getFilters(),rows=all.filter(p=>matchRow(p,f));
-    setText('supply-count',rows.length+' publisher'+(rows.length!==1?'s':''));
-    const tb=document.getElementById('supply-tbody');
-    if(!rows.length){tb.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:32px">No publishers match the current filters.</td></tr>';return;}
-    // Check whether any per-publisher stats exist; fall back to evenly-split totals when not.
-    const anyPerPub=rows.some(p=>_vstats[p.id]&&(_vstats[p.id].ad_requests||0)>0);
-    const pubCount=rows.length||1;
-    tb.innerHTML=rows.map(p=>{
-      let adreq,opps,imps,rev;
-      if(anyPerPub){
-        const s=_vstats[p.id]||{};
-        adreq=s.ad_requests||0; opps=s.opportunities||0; imps=s.impressions||0; rev=s.revenue||0;
-      } else {
-        // No per-publisher breakdown yet — distribute totals evenly
-        adreq=Math.round((_vtotal.ad_requests||0)/pubCount);
-        opps=Math.round((_vtotal.opportunities||0)/pubCount);
-        imps=Math.round((_vtotal.impressions||0)/pubCount);
-        rev=(_vtotal.revenue||0)/pubCount;
-      }
-      const ecpm=imps>0?rev/imps*1000:0;
-      const fillRate=adreq>0?opps/adreq*100:0;
-      const pl=(typeof videoModule!=='undefined')?videoModule.list():[];
-      const payout=pl.filter(e=>e.publisher_id===p.id).reduce((s,e)=>s+(e.floor_cpm||0),0);
-      return `<tr>
-        <td>${swHtml(p.id,p.status==='active','togglePub')}</td>
-        <td class="td-id">${escHtml(p.id)}</td>
-        <td class="td-name"><a href="#" style="color:inherit;text-decoration:none" onclick="pubModule.openEdit('${p.id}');return false">${escHtml(p.name)}</a></td>
-        <td>${statusBadge(p.status)}</td>
-        <td class="td-r">${fmt(adreq)}</td>
-        <td class="td-r">${fmtC(rev)}</td>
-        <td class="td-r">${fmtC(ecpm)}</td>
-        <td class="td-r">${fmtP(fillRate)}</td>
-        <td class="td-r">${fmt(0)}</td>
-        <td class="td-r">${fmt(0)}</td>
-        <td class="td-r">${fmt(imps)}</td>
-        <td class="td-r">${fmtC(payout)}</td>
-      </tr>`;
-    }).join('');
-  }
-  async function toggle(id,on){const p=all.find(x=>x.id===id);if(!p)return;try{await fetch(`/dashboard/publishers/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...p,status:on?'active':'paused'})});}finally{await fetchAll();}}
-  function openCreate(){editId=null;setField('pf-name','');setField('pf-domain','');setField('pf-email','');setCheck('pf-active',true);const e=document.getElementById('pubFormError');e.style.display='none';e.textContent='';setText('pubModalTitle','Add Publisher');document.getElementById('pubModal').classList.add('open');}
-  function openEdit(id){const p=all.find(x=>x.id===id);if(!p)return;editId=id;setField('pf-name',p.name);setField('pf-domain',p.domain);setField('pf-email',p.contact_email||'');setCheck('pf-active',p.status==='active');const e=document.getElementById('pubFormError');e.style.display='none';e.textContent='';setText('pubModalTitle','Edit Publisher');document.getElementById('pubModal').classList.add('open');}
-  function closeModal(){document.getElementById('pubModal').classList.remove('open');editId=null;}
-  async function save(){
-    const err=document.getElementById('pubFormError');err.style.display='none';
-    const pl={name:getField('pf-name'),domain:getField('pf-domain'),contact_email:getField('pf-email'),status:getCheck('pf-active')?'active':'paused'};
-    try{const url=editId?`/dashboard/publishers/${editId}`:'/dashboard/publishers';const res=await fetch(url,{method:editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pl)});if(!res.ok){const e=await res.json();throw new Error(e.error||res.status);}closeModal();await fetchAll();if(typeof campModule!=='undefined'&&campModule.refreshDropdowns)campModule.refreshDropdowns();adUnitsRender();}
-    catch(e){err.textContent=e.message;err.style.display='block';}
-  }
-  function openDelete(id,name){genericConfirmObj.open(`Delete publisher "${name}"?`,async()=>{await fetch(`/dashboard/publishers/${id}`,{method:'DELETE'});await fetchAll();});}
-  document.getElementById('pubModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
-  fetchAll();
-  return{fetchAll,list,renderTable,toggle,openCreate,openEdit,closeModal,save,openDelete};
-})();
-
-// advModule
-const advModule=(()=>{
-  let all=[],editId=null,_vstats={};
-  async function _loadVideoStats(){try{const r=await fetch('/dashboard/stats/video');if(r.ok){const d=await r.json();_vstats=d.total||{};}}catch{_vstats={};}}
-  async function fetchAll(){try{all=((await(await fetch('/dashboard/advertisers')).json()).entries)||[];}catch{all=[];}
-    await _loadVideoStats();renderTable();}
-  function list(){return all;}
-  function renderTable(){
-    const f=getFilters(),rows=all.filter(a=>matchRow(a,f));
-    setText('demand-count',rows.length+' advertiser'+(rows.length!==1?'s':''));
-    const tb=document.getElementById('demand-tbody');
-    if(!rows.length){tb.innerHTML='<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:32px">No advertisers match the current filters.</td></tr>';return;}
-    const camps=(typeof campModule!=='undefined')?campModule.list():[];
-    // Distribute total video stats across advertisers weighted by campaign count.
-    // When no campaigns exist, split evenly so each partner gets 1/N share.
-    const advCount=rows.length||1;
-    const totalAdReq=_vstats.ad_requests||0;
-    const totalOpps=_vstats.opportunities||0;
-    const totalImps=_vstats.impressions||0;
-    const totalRev=_vstats.revenue||0;
-    tb.innerHTML=rows.map(a=>{
-      const cc=camps.filter(c=>c.advertiser_id===a.id).length;
-      const share=camps.length>0?cc/camps.length:1/advCount;
-      const br=Math.round(totalAdReq*share);
-      const bids=Math.round(totalOpps*share);
-      const imps=Math.round(totalImps*share);
-      const rev=totalRev*share;
-      const payout=rev*0.92;
-      const fill=br>0?bids/br*100:0;
-      const ecpm=imps>0?rev/imps*1000:0;
-      return `<tr>
-        <td>${swHtml(a.id,a.status==='active','toggleAdv')}</td>
-        <td class="td-id">${escHtml(a.id)}</td>
-        <td class="td-name"><a href="#" style="color:inherit;text-decoration:none" onclick="advModule.openEdit('${a.id}');return false">${escHtml(a.name)}</a></td>
-        <td>${statusBadge(a.status)}</td>
-        <td class="td-r">${fmt(br)}</td>
-        <td class="td-r">${fmtP(fill)}</td>
-        <td class="td-r">${fmtC(ecpm)}</td>
-        <td class="td-r">${fmt(bids)}</td>
-        <td class="td-r">${fmt(0)}</td>
-        <td class="td-r">${fmt(0)}</td>
-        <td class="td-r">${fmt(imps)}</td>
-        <td class="td-r">${fmtC(rev)}</td>
-        <td class="td-r">${fmtC(payout)}</td>
-        <td><button class="btn-act" onclick="advModule.openEdit('${a.id}')">Edit</button></td>
-      </tr>`;
-    }).join('');
-  }
-  async function toggle(id,on){const a=all.find(x=>x.id===id);if(!a)return;try{await fetch(`/dashboard/advertisers/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...a,status:on?'active':'paused'})});}finally{await fetchAll();}}
-  function openCreate(){editId=null;['af-name','af-domain','af-category','af-email'].forEach(id=>setField(id,''));setCheck('af-active',true);const e=document.getElementById('advFormError');e.style.display='none';e.textContent='';setText('advModalTitle','Add Advertiser');document.getElementById('advModal').classList.add('open');}
-  function openEdit(id){const a=all.find(x=>x.id===id);if(!a)return;editId=id;setField('af-name',a.name);setField('af-domain',a.domain);setField('af-category',a.category||'');setField('af-email',a.contact_email||'');setCheck('af-active',a.status==='active');const e=document.getElementById('advFormError');e.style.display='none';e.textContent='';setText('advModalTitle','Edit Advertiser');document.getElementById('advModal').classList.add('open');}
-  function closeModal(){document.getElementById('advModal').classList.remove('open');editId=null;}
-  async function save(){
-    const err=document.getElementById('advFormError');err.style.display='none';
-    const pl={name:getField('af-name'),domain:getField('af-domain'),category:getField('af-category'),contact_email:getField('af-email'),status:getCheck('af-active')?'active':'paused'};
-    try{const url=editId?`/dashboard/advertisers/${editId}`:'/dashboard/advertisers';const res=await fetch(url,{method:editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pl)});if(!res.ok){const e=await res.json();throw new Error(e.error||res.status);}closeModal();await fetchAll();if(typeof campModule!=='undefined'&&campModule.refreshDropdowns)campModule.refreshDropdowns();campaignsRender();}
-    catch(e){err.textContent=e.message;err.style.display='block';}
-  }
-  function openDelete(id,name){genericConfirmObj.open(`Delete advertiser "${name}"?`,async()=>{await fetch(`/dashboard/advertisers/${id}`,{method:'DELETE'});await fetchAll();});}
-  document.getElementById('advModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
-  fetchAll();
-  return{fetchAll,list,renderTable,toggle,openCreate,openEdit,closeModal,save,openDelete};
-})();
-
-// dlModule – Domain List CRUD
-const dlModule=(()=>{
-  let all=[],editId=null,uploadMode=false;
-
-  async function fetchAll(){
-    try{const r=await fetch('/dashboard/domain-lists');if(r.ok){const d=await r.json();all=d.entries||[];}}
-    catch(e){console.warn('dlModule.fetchAll',e);}
-    return all;
-  }
-  function list(){return all;}
-
-  function _show(){document.getElementById('dlModal').classList.add('open');}
-  function closeModal(){document.getElementById('dlModal').classList.remove('open');editId=null;uploadMode=false;}
-
-  function _clearForm(){
-    document.getElementById('dl-name').value='';
-    document.querySelectorAll('input[name="dl-type"]').forEach(r=>{r.checked=(r.value==='blocklist');});
-    document.getElementById('dl-entries').value='';
-    document.getElementById('dl-csv-file').value='';
-    document.getElementById('dl-upload-row').style.display='none';
-    document.getElementById('dlFormError').style.display='none';
-    document.getElementById('dlFormError').textContent='';
-  }
-
-  function openCreate(){
-    editId=null;uploadMode=false;
-    _clearForm();
-    document.getElementById('dlModalTitle').textContent='Create Domain List';
-    _show();
-  }
-
-  function openUpload(){
-    editId=null;uploadMode=true;
-    _clearForm();
-    document.getElementById('dl-upload-row').style.display='block';
-    document.getElementById('dlModalTitle').textContent='Import Domain List';
-    _show();
-  }
-
-  function openEdit(id){
-    const e=all.find(x=>x.id===id);if(!e)return;
-    editId=id;uploadMode=false;
-    _clearForm();
-    document.getElementById('dlModalTitle').textContent='Edit Domain List';
-    document.getElementById('dl-name').value=e.name||'';
-    const t=e.list_type||'blocklist';
-    document.querySelectorAll('input[name="dl-type"]').forEach(r=>{r.checked=(r.value===t);});
-    document.getElementById('dl-entries').value=(e.entries||[]).join('\n');
-    _show();
-  }
-
-  async function save(){
-    const err=document.getElementById('dlFormError');
-    err.style.display='none';
-    const name=document.getElementById('dl-name').value.trim();
-    if(!name){err.textContent='List name is required.';err.style.display='block';return;}
-    const list_type=document.querySelector('input[name="dl-type"]:checked').value;
-    let rawText=document.getElementById('dl-entries').value;
-    // Merge CSV file if supplied
-    const fileInput=document.getElementById('dl-csv-file');
-    if(fileInput&&fileInput.files&&fileInput.files[0]){
-      const text=await fileInput.files[0].text();
-      rawText=(rawText?rawText+'\n':'')+text;
-    }
-    // Parse: split on newlines and commas, trim, filter empty
-    const entries=[...new Set(rawText.split(/[\n,]+/).map(d=>d.trim().toLowerCase()).filter(d=>d&&d.includes('.')))];
-    const payload={name,list_type,entries};
-    const url=editId?`/dashboard/domain-lists/${editId}`:'/dashboard/domain-lists';
-    const method=editId?'PUT':'POST';
-    try{
-      const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      if(!r.ok){const e=await r.json();throw new Error(e.error||r.status);}
-      closeModal();
-      await fetchAll();
-      // Refresh any open campaign's domain list selector
-      if(typeof campModule!=='undefined'&&campModule.refreshDomainLists)campModule.refreshDomainLists();
-    }catch(e){err.textContent=e.message;err.style.display='block';}
-  }
-
-  function openDelete(id,name){
-    genericConfirmObj.open(`Delete domain list "${name}"?`,async()=>{
-      await fetch(`/dashboard/domain-lists/${id}`,{method:'DELETE'});
-      await fetchAll();
-      if(typeof campModule!=='undefined'&&campModule.refreshDomainLists)campModule.refreshDomainLists();
-    });
-  }
-
-  document.getElementById('dlModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
-  fetchAll();
-  return{fetchAll,list,openCreate,openUpload,openEdit,closeModal,save,openDelete};
-})();
-
-// campModule
-const campModule=(()=>{
-  let all=[],editId=null,activeTab='basic';
-  // Tab management
-  function switchTab(tab,btn){
-    activeTab=tab;
-    document.querySelectorAll('.camp-tab').forEach(b=>b.classList.remove('active'));
-    if(btn)btn.classList.add('active');
-    document.querySelectorAll('.ctab-pane').forEach(p=>p.style.display='none');
-    const pane=document.getElementById('ctab-'+tab);if(pane)pane.style.display='';
-    if(tab==='supply')renderSupplyRows();
-    if(tab==='advanced')renderTargetingRows();
-    if(tab==='extstats')_buildExtPreview();
-    if(tab==='automation')refreshAudienceSegments(getSelectedSegments());
-  }
-  function prevStep(){const tabs=['basic','advanced','automation','supply','extstats'];const i=tabs.indexOf(activeTab);if(i>0){const t=tabs[i-1];switchTab(t,document.querySelector(`.camp-tab[data-tab="${t}"]`));}}
-  function nextStep(){const tabs=['basic','advanced','automation','supply','extstats'];const i=tabs.indexOf(activeTab);if(i<tabs.length-1){const t=tabs[i+1];switchTab(t,document.querySelector(`.camp-tab[data-tab="${t}"]`));}}
-  // Integration type toggle
-  function onIntTypeChange(){
-    const v=document.querySelector('input[name="cf-inttype"]:checked')?.value||'open_rtb';
-    document.getElementById('cf-tagbased-section').style.display=v==='tag_based'?'':'none';
-    document.getElementById('cf-ortb-section').style.display=v==='tag_based'?'none':'';
-  }
-  // Mime type chip management
-  let _mimes=['video/mp4'];
-  function getMimes(){return[..._mimes];}
-  function setMimes(arr){_mimes=arr&&arr.length?[...arr]:['video/mp4'];_renderMimes();}
-  function _renderMimes(){
-    const c=document.getElementById('cf-mime-chips');if(!c)return;
-    c.innerHTML=_mimes.map(m=>`<span class="cs-mime-chip" onclick="campModule.removeMime(this)">&#215; ${escHtml(m)}</span>`).join('');
-  }
-  function addMime(sel){const v=sel.value;sel.value='';if(!v||_mimes.includes(v))return;_mimes.push(v);_renderMimes();}
-  function removeMime(chip){const txt=chip.textContent.replace(/^× /,'').trim();_mimes=_mimes.filter(m=>m!==txt);_renderMimes();}
-  // Protocol checkboxes
-  function getProtos(){return[...document.querySelectorAll('.cf-proto:checked')].map(c=>parseInt(c.value));}
-  function setProtos(arr){const active=arr&&arr.length?arr:[2,3,5,6,8];document.querySelectorAll('.cf-proto').forEach(c=>c.checked=active.includes(parseInt(c.value)));}
-  // Collapsible sections
-  function toggleSection(hdr){hdr.closest('.cs-coll').classList.toggle('cs-collapsed');}
-  // Targeting rules (multi-row)
-  let _targetingRules=[];
-  function addTargetingRow(rule){_targetingRules.push(rule||{type:'geo',op:'is',value:''});renderTargetingRows();}
-  function removeTargetingRow(i){_targetingRules.splice(i,1);renderTargetingRows();}
-  function renderTargetingRows(){
-    const c=document.getElementById('cf-targeting-rows');if(!c)return;
-    if(!_targetingRules.length){c.innerHTML='<div style="color:var(--muted);font-size:13px;padding:6px 0;margin-bottom:6px">No targeting rules yet. Click + Add Rule to add one.</div>';return;}
-    c.innerHTML=_targetingRules.map((r,i)=>`<div class="align-row">
-      <select onchange="campModule._setTargetField(${i},'type',this.value)">
-        <option value="geo"${r.type==='geo'?' selected':''}>Geo</option>
-        <option value="device_type"${r.type==='device_type'?' selected':''}>Device Type</option>
-        <option value="os"${r.type==='os'?' selected':''}>OS</option>
-        <option value="app_bundle"${r.type==='app_bundle'?' selected':''}>App Bundle</option>
-        <option value="domain"${r.type==='domain'?' selected':''}>Domain</option>
-        <option value="day_part"${r.type==='day_part'?' selected':''}>Day Part</option>
-      </select>
-      <select style="max-width:110px" onchange="campModule._setTargetField(${i},'op',this.value)">
-        <option value="is"${r.op==='is'?' selected':''}>is</option>
-        <option value="is_not"${r.op==='is_not'?' selected':''}>is not</option>
-        <option value="contains"${r.op==='contains'?' selected':''}>contains</option>
-      </select>
-      <input type="text" placeholder="value" value="${escHtml(r.value||'')}" oninput="campModule._setTargetField(${i},'value',this.value)"/>
-      <button class="btn-rm" onclick="campModule.removeTargetingRow(${i})">&#215;</button>
-    </div>`).join('');
-  }
-  function _setTargetField(i,k,v){if(_targetingRules[i])_targetingRules[i][k]=v;}
-  function getTargetingRules(){return _targetingRules.map(r=>({...r}));}
-  function setTargetingRules(arr){_targetingRules=arr&&arr.length?arr.map(r=>({...r})):[];renderTargetingRows();}
-  function addTargeting(){addTargetingRow();} // legacy alias
-  // Supply links (ad unit routing)
-  let _supplyLinks=[];
-  function addSupplyRow(id){_supplyLinks.push(id||'');renderSupplyRows();}
-  function removeSupplyRow(i){_supplyLinks.splice(i,1);renderSupplyRows();}
-  function renderSupplyRows(){
-    const c=document.getElementById('cf-supply-rows');if(!c)return;
-    const vids=typeof videoModule!=='undefined'?videoModule.list():[];
-    if(!_supplyLinks.length){c.innerHTML='<div style="color:var(--muted);font-size:13px;padding:6px 0;margin-bottom:6px">No ad units linked yet.</div>';return;}
-    c.innerHTML=_supplyLinks.map((sid,i)=>`<div class="align-row">
-      <select onchange="campModule._setSupplyLink(${i},this.value)">
-        <option value="">&#8211; select ad unit &#8211;</option>
-        ${vids.map(v=>`<option value="${v.id}"${sid===v.id?' selected':''}>${escHtml(v.name)}</option>`).join('')}
-      </select>
-      <button class="btn-rm" onclick="campModule.removeSupplyRow(${i})">&#215; Remove</button>
-    </div>`).join('');
-  }
-  function _setSupplyLink(i,v){if(i<_supplyLinks.length)_supplyLinks[i]=v;}
-  function getSupplyLinks(){return [..._supplyLinks].filter(Boolean);}
-  function setSupplyLinks(arr){_supplyLinks=arr&&arr.length?[...arr]:[];renderSupplyRows();}
-  function createDomainList(){if(typeof dlModule!=='undefined')dlModule.openCreate();}
-  function uploadDomainList(){if(typeof dlModule!=='undefined')dlModule.openUpload();}
-  function refreshDomainLists(selectedIds){
-    const sel=document.getElementById('cf-domain-lists');if(!sel)return;
-    const lists=typeof dlModule!=='undefined'?dlModule.list():[];
-    const ids=Array.isArray(selectedIds)?selectedIds:[];
-    if(!lists.length){sel.innerHTML='<option value="" disabled>No domain lists yet — create one above</option>';return;}
-    sel.innerHTML=lists.map(l=>`<option value="${l.id}"${ids.includes(l.id)?' selected':''}>[${l.list_type==='whitelist'?'WL':'BL'}] ${_esc(l.name)} (${(l.entries||[]).length})</option>`).join('');
-  }
-  function getSelectedDomainLists(){
-    const sel=document.getElementById('cf-domain-lists');if(!sel)return[];
-    return Array.from(sel.selectedOptions).map(o=>o.value).filter(Boolean);
-  }
-  function saveMenu(e){e.stopPropagation();}
-  // External statistics (third-party API report)
-  function _extDefDates(){const now=new Date();const fr=new Date(now.getFullYear(),now.getMonth()-1,1);const to=new Date(now.getFullYear(),now.getMonth(),0);const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;return{from:fmt(fr),to:fmt(to)};}
-  function setExtStats(obj){
-    const cfg=obj||{};const dd=_extDefDates();
-    setField('cf-es-provider',cfg.provider||'');setField('cf-es-url',cfg.url||'');
-    setField('cf-es-apikey',cfg.api_key||'');setField('cf-es-idparam',cfg.id_param||'id');
-    setField('cf-es-idval',cfg.id_value||'');setField('cf-es-from',cfg.date_from||dd.from);setField('cf-es-to',cfg.date_to||dd.to);
-    const r=document.getElementById('cf-es-result');if(r)r.style.display='none';
-    _buildExtPreview();
-  }
-  function getExtStats(){
-    return{provider:getField('cf-es-provider'),url:getField('cf-es-url'),api_key:getField('cf-es-apikey'),
-      id_param:getField('cf-es-idparam')||'id',id_value:getField('cf-es-idval'),
-      date_from:getField('cf-es-from'),date_to:getField('cf-es-to')};
-  }
-  function _buildExtPreview(){
-    const base=getField('cf-es-url');const p=document.getElementById('cf-es-preview');if(!p)return;
-    if(!base){p.textContent='\u2014';return;}
-    const params=[];const key=getField('cf-es-apikey');const idParam=getField('cf-es-idparam')||'id';
-    const idVal=getField('cf-es-idval')||(editId||'[record_id]');
-    const from=getField('cf-es-from');const to=getField('cf-es-to');
-    if(key)params.push(`api_key=${encodeURIComponent(key)}`);
-    params.push(`${encodeURIComponent(idParam)}=${encodeURIComponent(idVal)}`);
-    if(from)params.push(`from=${encodeURIComponent(from)}`);if(to)params.push(`to=${encodeURIComponent(to)}`);
-    p.textContent=base+(params.length?(base.includes('?')?'&':'?')+params.join('&'):'');
-  }
-  function _copyExtPreview(){const el=document.getElementById('cf-es-preview');if(el)navigator.clipboard.writeText(el.textContent);}
-  async function testExtStats(){
-    const url=document.getElementById('cf-es-preview')?.textContent;
-    if(!url||url==='\u2014'){alert('Please fill in the Base API URL first.');return;}
-    const res_el=document.getElementById('cf-es-result');const body_el=document.getElementById('cf-es-result-body');
-    res_el.style.display='';body_el.textContent='Fetching\u2026';
-    try{
-      const r=await fetch('/dashboard/ext-stats/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-      const txt=await r.text();try{body_el.textContent=JSON.stringify(JSON.parse(txt),null,2);}catch{body_el.textContent=txt;}
-    }catch(e){body_el.textContent='Error: '+e.message;}
-  }
-  // Data
-  async function fetchAll(){try{all=((await(await fetch('/dashboard/campaigns')).json()).entries)||[];}catch{all=[];}if(typeof advModule!=='undefined'&&advModule.renderTable)advModule.renderTable();}
-  function list(){return all;}
-  function populateDropdowns(){
-    document.getElementById('cf-publisher').innerHTML='<option value="">&#8211; select publisher &#8211;</option>'+pubModule.list().map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('');
-    document.getElementById('cf-advertiser').innerHTML='<option value="">&#8211; select advertiser &#8211;</option>'+advModule.list().map(a=>`<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
-  }
-  function copyVast(){const v=document.getElementById('cf-vast-url').value;if(v)navigator.clipboard.writeText(v);}
-  function copyOrtb(){const v=document.getElementById('cf-ortb-url').value;if(v)navigator.clipboard.writeText(v);}
-  // Automation helpers
-  function onAutoBiddingChange(){const en=document.getElementById('cf-auto-bidding')?.checked;const f=document.getElementById('cf-auto-bidding-fields');if(f)f.style.display=en?'':'none';}
-  function _resetAutomation(){
-    setField('cf-budget-total','');setField('cf-budget-daily','');
-    const ep=document.querySelector('input[name="cf-pacing"][value="even"]');if(ep)ep.checked=true;
-    setCheck('cf-auto-bidding',false);onAutoBiddingChange();
-    setField('cf-auto-bidding-goal','vcr');setField('cf-auto-bidding-target','');
-    setField('cf-sched-start','');setField('cf-sched-end','');
-    document.querySelectorAll('.cf-day').forEach(c=>c.checked=false);
-    setField('cf-freq-imps','');setField('cf-freq-period','day');
-    refreshAudienceSegments([]);
-  }
-  function refreshAudienceSegments(selectedIds){
-    const sel=document.getElementById('cf-seg-ids');if(!sel)return;
-    const segs=typeof audModule!=='undefined'?audModule.list():[];
-    const ids=Array.isArray(selectedIds)?selectedIds:[];
-    if(!segs.length){sel.innerHTML='<option value="" disabled>No audience segments yet</option>';return;}
-    sel.innerHTML=segs.map(s=>`<option value="${s.id}"${ids.includes(s.id)?' selected':''}>[${(s.type||'').substring(0,4)}] ${escHtml(s.name)}</option>`).join('');
-  }
-  function getSelectedSegments(){const sel=document.getElementById('cf-seg-ids');if(!sel)return[];return Array.from(sel.selectedOptions).map(o=>o.value).filter(Boolean);}
-  function _resetBasic(){
-    setField('cf-name','');setField('cf-ortb-url','');setField('cf-vast-url','');setField('cf-floor','');
-    setField('cf-advertiser','');setField('cf-publisher','');setField('cf-status-select','active');
-    const openRtb=document.querySelector('input[name="cf-inttype"][value="open_rtb"]');if(openRtb)openRtb.checked=true;onIntTypeChange();
-    setField('cf-ortb-version','2.5');setMimes(['video/mp4']);setProtos([]);
-    setCheck('cf-dt-video',true);setCheck('cf-dt-display',false);setCheck('cf-dt-audio',false);
-    setCheck('cf-auction-pmp',false);
-    const fp=document.querySelector('input[name="cf-price-type"][value="first"]');if(fp)fp.checked=true;
-    setCheck('cf-start-now',true);
-  }
-  function _resetAdvanced(){
-    ['cf-imps-daily','cf-imps-hourly','cf-reqs-daily','cf-reqs-hourly','cf-opps-daily','cf-opps-hourly','cf-qps','cf-rev-daily'].forEach(id=>setField(id,''));
-    setField('cf-filter-imps','');
-    const blk=document.querySelector('input[name="cf-domain-filter"][value="block"]');if(blk)blk.checked=true;
-    setCheck('cf-pass-schain',true);
-    setField('cf-badv','');setField('cf-bcat','');
-    setTargetingRules([]);setSupplyLinks([]);setExtStats({});refreshDomainLists([]);
-    _resetAutomation();
-  }
-  function _resetTabs(){
-    activeTab='basic';
-    document.querySelectorAll('.camp-tab').forEach((t,i)=>t.classList.toggle('active',i===0));
-    document.querySelectorAll('.ctab-pane').forEach((p,i)=>p.style.display=i===0?'':'none');
-  }
-  function openCreate(advId){
-    editId=null;populateDropdowns();_resetBasic();_resetAdvanced();_resetTabs();
-    if(advId)setField('cf-advertiser',advId);
-    const e=document.getElementById('campFormError');e.style.display='none';e.textContent='';
-    document.getElementById('campModal').classList.add('open');
-  }
-  function openEdit(id){
-    const c=all.find(x=>x.id===id);if(!c)return;
-    editId=id;populateDropdowns();_resetTabs();
-    setField('cf-name',c.name);setField('cf-ortb-url',c.ortb_endpoint_url||'');setField('cf-vast-url',c.vast_tag_url||'');
-    setField('cf-floor',c.floor_cpm||'');setField('cf-advertiser',c.advertiser_id);setField('cf-publisher',c.publisher_id||'');
-    setField('cf-status-select',c.status==='paused'?'paused':'active');
-    const intEl=document.querySelector(`input[name="cf-inttype"][value="${c.integration_type||'open_rtb'}"]`);if(intEl)intEl.checked=true;onIntTypeChange();
-    setField('cf-ortb-version',c.ortb_version||'2.5');
-    setMimes(c.mime_types&&c.mime_types.length?c.mime_types:['video/mp4']);setProtos(c.protocols||[]);
-    setCheck('cf-dt-video',(c.demand_types||['video']).includes('video'));
-    setCheck('cf-dt-display',(c.demand_types||[]).includes('display'));
-    setCheck('cf-dt-audio',(c.demand_types||[]).includes('audio'));
-    setCheck('cf-auction-pmp',c.auction_type==='pmp');
-    const ptEl=document.querySelector(`input[name="cf-price-type"][value="${c.auction_price_type||'first'}"]`);if(ptEl)ptEl.checked=true;
-    setCheck('cf-start-now',c.status!=='paused');
-    setField('cf-imps-daily',c.imps_daily_cap||'');setField('cf-imps-hourly',c.imps_hourly_cap||'');
-    setField('cf-reqs-daily',c.reqs_daily_cap||'');setField('cf-reqs-hourly',c.reqs_hourly_cap||'');
-    setField('cf-opps-daily',c.opps_daily_cap||'');setField('cf-opps-hourly',c.opps_hourly_cap||'');
-    setField('cf-qps',c.qps||'');setField('cf-rev-daily',c.rev_daily_cap||'');
-    setField('cf-filter-imps',c.filter_impressions||'');
-    const dfEl=document.querySelector(`input[name="cf-domain-filter"][value="${c.domain_filter_type||'block'}"]`);if(dfEl)dfEl.checked=true;
-    setCheck('cf-pass-schain',c.pass_schain!==false);
-    setField('cf-badv',(c.badv||[]).join(', '));setField('cf-bcat',(c.bcat||[]).join(', '));
-    setTargetingRules(c.targeting_rules||[]);setSupplyLinks(c.supply_links||[]);setExtStats(c.ext_stats||{});refreshDomainLists(c.domain_lists||[]);
-    // Automation
-    setField('cf-budget-total',c.budget_total||'');setField('cf-budget-daily',c.budget_daily||'');
-    const pacEl=document.querySelector(`input[name="cf-pacing"][value="${c.pacing_type||'even'}"]`);if(pacEl)pacEl.checked=true;
-    setCheck('cf-auto-bidding',!!c.auto_bidding);onAutoBiddingChange();
-    setField('cf-auto-bidding-goal',c.auto_bidding_goal||'vcr');setField('cf-auto-bidding-target',c.auto_bidding_target||'');
-    setField('cf-sched-start',c.start_date||'');setField('cf-sched-end',c.end_date||'');
-    const activeDays=c.day_part_schedule||[];document.querySelectorAll('.cf-day').forEach(cb=>cb.checked=activeDays.includes(cb.value));
-    setField('cf-freq-imps',c.freq_cap_imps||'');setField('cf-freq-period',c.freq_cap_period||'day');
-    refreshAudienceSegments(c.segment_ids||[]);
-    const e=document.getElementById('campFormError');e.style.display='none';e.textContent='';
-    document.getElementById('campModal').classList.add('open');
-  }
-  function closeModal(){document.getElementById('campModal').classList.remove('open');editId=null;}
-  async function save(){
-    const err=document.getElementById('campFormError');err.style.display='none';
-    const intType=document.querySelector('input[name="cf-inttype"]:checked')?.value||'open_rtb';
-    const priceType=document.querySelector('input[name="cf-price-type"]:checked')?.value||'first';
-    const domainFilter=document.querySelector('input[name="cf-domain-filter"]:checked')?.value||'block';
-    const dt=[];if(getCheck('cf-dt-video'))dt.push('video');if(getCheck('cf-dt-display'))dt.push('display');if(getCheck('cf-dt-audio'))dt.push('audio');
-    const pl={
-      name:getField('cf-name'),advertiser_id:getField('cf-advertiser'),publisher_id:getField('cf-publisher'),
-      vast_tag_url:getField('cf-vast-url'),ortb_endpoint_url:getField('cf-ortb-url'),floor_cpm:parseFloat(getField('cf-floor'))||0,
-      status:getField('cf-status-select')||'active',
-      integration_type:intType,ortb_version:getField('cf-ortb-version'),
-      mime_types:getMimes(),protocols:getProtos(),demand_types:dt,
-      auction_type:getCheck('cf-auction-pmp')?'pmp':'open',auction_price_type:priceType,
-      imps_daily_cap:parseInt(getField('cf-imps-daily'))||0,imps_hourly_cap:parseInt(getField('cf-imps-hourly'))||0,
-      reqs_daily_cap:parseInt(getField('cf-reqs-daily'))||0,reqs_hourly_cap:parseInt(getField('cf-reqs-hourly'))||0,
-      opps_daily_cap:parseInt(getField('cf-opps-daily'))||0,opps_hourly_cap:parseInt(getField('cf-opps-hourly'))||0,
-      qps:parseInt(getField('cf-qps'))||0,rev_daily_cap:parseFloat(getField('cf-rev-daily'))||0,
-      filter_impressions:getField('cf-filter-imps'),domain_filter_type:domainFilter,
-      pass_schain:getCheck('cf-pass-schain'),domain_lists:getSelectedDomainLists(),
-      badv:getField('cf-badv').split(',').map(s=>s.trim()).filter(Boolean),
-      bcat:getField('cf-bcat').split(',').map(s=>s.trim()).filter(Boolean),
-      targeting_rules:getTargetingRules(),supply_links:getSupplyLinks(),ext_stats:getExtStats(),
-      budget_total:parseFloat(getField('cf-budget-total'))||0,
-      budget_daily:parseFloat(getField('cf-budget-daily'))||0,
-      pacing_type:document.querySelector('input[name="cf-pacing"]:checked')?.value||'even',
-      auto_bidding:getCheck('cf-auto-bidding'),auto_bidding_goal:getField('cf-auto-bidding-goal'),
-      auto_bidding_target:parseFloat(getField('cf-auto-bidding-target'))||0,
-      start_date:getField('cf-sched-start'),end_date:getField('cf-sched-end'),
-      day_part_schedule:[...document.querySelectorAll('.cf-day:checked')].map(c=>c.value),
-      freq_cap_imps:parseInt(getField('cf-freq-imps'))||0,
-      freq_cap_period:getField('cf-freq-period')||'day',
-      segment_ids:getSelectedSegments()
-    };
-    try{
-      const url=editId?`/dashboard/campaigns/${editId}`:'/dashboard/campaigns';
-      const res=await fetch(url,{method:editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pl)});
-      if(!res.ok){const e=await res.json();throw new Error(e.error||res.status);}
-      closeModal();await fetchAll();campaignsRender();adUnitsRender();
-    }catch(e){err.textContent=e.message;err.style.display='block';}
-  }
-  function openDelete(id,name){genericConfirmObj.open(`Delete campaign "${name}"?`,async()=>{await fetch(`/dashboard/campaigns/${id}`,{method:'DELETE'});await fetchAll();});}
-  function refreshDropdowns(){if(document.getElementById('campModal').classList.contains('open'))populateDropdowns();fetchAll();}
-  document.getElementById('campModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
-  fetchAll();
-  return{fetchAll,list,openCreate,openEdit,closeModal,save,openDelete,copyVast,copyOrtb,refreshDropdowns,switchTab,onIntTypeChange,addMime,removeMime,toggleSection,prevStep,nextStep,saveMenu,addTargeting,addTargetingRow,removeTargetingRow,renderTargetingRows,_setTargetField,setTargetingRules,getTargetingRules,addSupplyRow,removeSupplyRow,renderSupplyRows,_setSupplyLink,setSupplyLinks,createDomainList,uploadDomainList,refreshDomainLists,getSelectedDomainLists,setExtStats,getExtStats,_buildExtPreview,_copyExtPreview,testExtStats,onAutoBiddingChange,_resetAutomation,refreshAudienceSegments,getSelectedSegments};
-})();
-// Refresh overview stats after initial data load
-setTimeout(updateOverview, 500);
-
-// ─── Audience Segment module ────────────────────────────────────────────────
-const audModule=(()=>{
-  let all=[],editId=null,_rules=[];
-  function _addRuleRow(rule){_rules.push(rule||{attribute:'',op:'is',value:''});_renderRules();}
-  function _removeRule(i){_rules.splice(i,1);_renderRules();}
-  function _setRuleField(i,k,v){if(_rules[i])_rules[i][k]=v;}
-  function _renderRules(){
-    const c=document.getElementById('seg-rules-rows');if(!c)return;
-    if(!_rules.length){c.innerHTML='<div style="color:var(--muted);font-size:13px;padding:6px 0">No rules yet. Click + Add Rule to define targeting conditions.</div>';return;}
-    c.innerHTML=_rules.map((r,i)=>`<div class="align-row">
-      <input type="text" placeholder="Attribute (e.g. age_range, interest)" value="${escHtml(r.attribute||'')}" oninput="audModule._setRuleField(${i},'attribute',this.value)" style="flex:1.5"/>
-      <select style="max-width:110px" onchange="audModule._setRuleField(${i},'op',this.value)">
-        <option value="is"${r.op==='is'?' selected':''}>is</option>
-        <option value="is_not"${r.op==='is_not'?' selected':''}>is not</option>
-        <option value="contains"${r.op==='contains'?' selected':''}>contains</option>
-        <option value="in"${r.op==='in'?' selected':''}>in</option>
-        <option value="not_in"${r.op==='not_in'?' selected':''}>not in</option>
-      </select>
-      <input type="text" placeholder="value" value="${escHtml(r.value||'')}" oninput="audModule._setRuleField(${i},'value',this.value)" style="flex:1"/>
-      <button class="btn-rm" onclick="audModule._removeRule(${i})">&#215;</button>
-    </div>`).join('');
-  }
-  function _onSourceChange(){
-    const v=document.getElementById('seg-source')?.value;
-    const s=document.getElementById('seg-crm-section');if(s)s.style.display=(v==='crm')?'':'none';
-  }
-  async function fetchAll(){
-    try{all=((await(await fetch('/dashboard/audiences')).json()).entries)||[];}catch{all=[];}
-    audiencesRender();
-  }
-  function list(){return all;}
-  function openCreate(){
-    editId=null;_rules=[];_renderRules();
-    ['seg-name','seg-desc','seg-crm-provider','seg-crm-endpoint','seg-crm-apikey','seg-est-reach','seg-freq-imps','seg-ttl'].forEach(id=>setField(id,''));
-    setField('seg-type','behavioral');setField('seg-source','first_party');setField('seg-status','active');setField('seg-freq-period','day');
-    setCheck('seg-consent',false);setCheck('seg-gdpr',false);setCheck('seg-ccpa',false);
-    const crm=document.getElementById('seg-crm-section');if(crm)crm.style.display='none';
-    const e=document.getElementById('segFormError');e.style.display='none';e.textContent='';
-    document.getElementById('segModal').classList.add('open');
-  }
-  function openEdit(id){
-    const s=all.find(x=>x.id===id);if(!s)return;
-    editId=id;
-    setField('seg-name',s.name||'');setField('seg-desc',s.description||'');
-    setField('seg-type',s.type||'behavioral');setField('seg-source',s.source||'first_party');setField('seg-status',s.status||'active');
-    setField('seg-crm-provider',s.crm_provider||'');setField('seg-crm-endpoint',s.crm_endpoint||'');setField('seg-crm-apikey',s.crm_api_key||'');
-    setField('seg-est-reach',s.estimated_reach||'');setField('seg-freq-imps',s.freq_cap_imps||'');setField('seg-freq-period',s.freq_cap_period||'day');
-    setCheck('seg-consent',!!s.consent_required);setCheck('seg-gdpr',!!s.gdpr_applies);setCheck('seg-ccpa',!!s.ccpa_applies);setField('seg-ttl',s.data_ttl_days||'');
-    _rules=(s.rules||[]).map(r=>({...r}));_renderRules();
-    _onSourceChange();
-    const e=document.getElementById('segFormError');e.style.display='none';e.textContent='';
-    document.getElementById('segModal').classList.add('open');
-  }
-  function closeModal(){document.getElementById('segModal').classList.remove('open');editId=null;}
-  async function save(){
-    const err=document.getElementById('segFormError');err.style.display='none';
-    const pl={
-      name:getField('seg-name'),description:getField('seg-desc'),
-      type:getField('seg-type'),source:getField('seg-source'),status:getField('seg-status'),
-      crm_provider:getField('seg-crm-provider'),crm_endpoint:getField('seg-crm-endpoint'),crm_api_key:getField('seg-crm-apikey'),
-      estimated_reach:parseInt(getField('seg-est-reach'))||0,
-      freq_cap_imps:parseInt(getField('seg-freq-imps'))||0,freq_cap_period:getField('seg-freq-period'),
-      consent_required:getCheck('seg-consent'),gdpr_applies:getCheck('seg-gdpr'),ccpa_applies:getCheck('seg-ccpa'),
-      data_ttl_days:parseInt(getField('seg-ttl'))||0,
-      rules:_rules.filter(r=>r.attribute).map(r=>({...r}))
-    };
-    try{
-      const url=editId?`/dashboard/audiences/${editId}`:'/dashboard/audiences';
-      const res=await fetch(url,{method:editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pl)});
-      if(!res.ok){const e=await res.json();throw new Error(e.error||res.status);}
-      closeModal();await fetchAll();
-      if(typeof campModule!=='undefined')campModule.refreshAudienceSegments([]);
-    }catch(e){err.textContent=e.message;err.style.display='block';}
-  }
-  function openDelete(id,name){genericConfirmObj.open(`Delete segment "${name}"?`,async()=>{await fetch(`/dashboard/audiences/${id}`,{method:'DELETE'});await fetchAll();});}
-  document.getElementById('segModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
-  fetchAll();
-  return{fetchAll,list,openCreate,openEdit,closeModal,save,openDelete,_addRuleRow,_removeRule,_setRuleField,_onSourceChange};
-})();
-
-// ─── Yield Rule module ───────────────────────────────────────────────────────
-const yieldModule=(()=>{
-  let all=[],editId=null;
-  async function fetchAll(){
-    try{all=((await(await fetch('/dashboard/yield-rules')).json()).entries)||[];}catch{all=[];}
-    yieldRender();
-  }
-  function list(){return all;}
-  function openCreate(){
-    editId=null;
-    ['yr-name','yr-publisher','yr-adunit','yr-floor','yr-target','yr-revshare','yr-wfpos','yr-view-thr','yr-vcr-thr'].forEach(id=>setField(id,''));
-    setField('yr-priority','programmatic');setField('yr-auction','first_price');setCheck('yr-active',true);
-    const e=document.getElementById('yieldFormError');e.style.display='none';e.textContent='';
-    document.getElementById('yieldModal').classList.add('open');
-  }
-  function openEdit(id){
-    const y=all.find(x=>x.id===id);if(!y)return;
-    editId=id;
-    setField('yr-name',y.name||'');setField('yr-priority',y.priority||'programmatic');
-    setField('yr-publisher',y.publisher_id||'');setField('yr-adunit',y.ad_unit_id||'');
-    setField('yr-floor',y.floor_cpm||'');setField('yr-target',y.target_cpm||'');
-    setField('yr-revshare',y.rev_share||'');setField('yr-wfpos',y.waterfall_pos||'');
-    setField('yr-auction',y.auction_type||'first_price');
-    setField('yr-view-thr',y.viewability_threshold||'');setField('yr-vcr-thr',y.vcr_threshold||'');
-    setCheck('yr-active',y.active!==false);
-    const e=document.getElementById('yieldFormError');e.style.display='none';e.textContent='';
-    document.getElementById('yieldModal').classList.add('open');
-  }
-  function closeModal(){document.getElementById('yieldModal').classList.remove('open');editId=null;}
-  async function save(){
-    const err=document.getElementById('yieldFormError');err.style.display='none';
-    const pl={
-      name:getField('yr-name'),priority:getField('yr-priority'),
-      publisher_id:getField('yr-publisher'),ad_unit_id:getField('yr-adunit'),
-      floor_cpm:parseFloat(getField('yr-floor'))||0,target_cpm:parseFloat(getField('yr-target'))||0,
-      rev_share:parseFloat(getField('yr-revshare'))||0,waterfall_pos:parseInt(getField('yr-wfpos'))||0,
-      auction_type:getField('yr-auction'),
-      viewability_threshold:parseFloat(getField('yr-view-thr'))||0,
-      vcr_threshold:parseFloat(getField('yr-vcr-thr'))||0,
-      active:getCheck('yr-active')
-    };
-    try{
-      const url=editId?`/dashboard/yield-rules/${editId}`:'/dashboard/yield-rules';
-      const res=await fetch(url,{method:editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pl)});
-      if(!res.ok){const e=await res.json();throw new Error(e.error||res.status);}
-      closeModal();await fetchAll();
-    }catch(e){err.textContent=e.message;err.style.display='block';}
-  }
-  function openDelete(id,name){genericConfirmObj.open(`Delete yield rule "${name}"?`,async()=>{await fetch(`/dashboard/yield-rules/${id}`,{method:'DELETE'});await fetchAll();});}
-  document.getElementById('yieldModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
-  fetchAll();
-  return{fetchAll,list,openCreate,openEdit,closeModal,save,openDelete};
-})();
-
-// ─── Audiences page renderer ─────────────────────────────────────────────────
-function audiencesRender(){
-  const segs=typeof audModule!=='undefined'?audModule.list():[];
-  setText('audiences-count',segs.length+' segment'+(segs.length!==1?'s':''));
-  const tb=document.getElementById('audiences-tbody');
-  if(!segs.length){tb.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px">No audience segments yet. Click <strong>+ Add Segment</strong> to create one.</td></tr>';return;}
-  tb.innerHTML=segs.map(s=>`<tr>
-    <td class="td-name">${escHtml(s.name)}</td>
-    <td><span class="bdg bdg-paused">${escHtml(s.type||'')}</span></td>
-    <td><span class="bdg">${(s.source||'').replace('_',' ')}</span></td>
-    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.description||'\u2014')}</td>
-    <td class="td-r">${s.estimated_reach?s.estimated_reach.toLocaleString():'\u2014'}</td>
-    <td>${s.freq_cap_imps?(s.freq_cap_imps+'\u00a0/\u00a0'+(s.freq_cap_period||'day')):'\u2014'}</td>
-    <td>${s.consent_required?'<span class="bdg bdg-live">Required</span>':'<span style="color:var(--muted)">\u2014</span>'}</td>
-    <td>${statusBadge(s.status)}</td>
-    <td><button class="btn-act" onclick="audModule.openEdit('${s.id}')">Edit</button> <button class="btn-act" style="color:var(--danger);border-color:var(--danger)" onclick="audModule.openDelete('${s.id}',${JSON.stringify(s.name)})">Del</button></td>
-  </tr>`).join('');
-}
-
-// ─── Yield page renderer ─────────────────────────────────────────────────────
-function yieldRender(){
-  const rules=typeof yieldModule!=='undefined'?yieldModule.list():[];
-  setText('yield-count',rules.length+' rule'+(rules.length!==1?'s':''));
-  const tb=document.getElementById('yield-tbody');
-  if(!rules.length){tb.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px">No yield rules yet. Click <strong>+ Add Rule</strong> to create one.</td></tr>';return;}
-  const priorityBadge=p=>({premium:'bdg-live',guaranteed:'bdg-limited',programmatic:'bdg-paused',house:'bdg-archived'}[p]||'bdg-paused');
-  tb.innerHTML=rules.map(y=>`<tr>
-    <td class="td-name">${escHtml(y.name)}</td>
-    <td><span class="bdg ${priorityBadge(y.priority)}">${escHtml(y.priority||'')}</span></td>
-    <td class="td-r">${fmtC(y.floor_cpm||0)}</td>
-    <td class="td-r">${y.target_cpm?fmtC(y.target_cpm):'\u2014'}</td>
-    <td class="td-r">${y.rev_share?y.rev_share+'%':'\u2014'}</td>
-    <td class="td-r">${y.viewability_threshold?y.viewability_threshold+'%':'\u2014'}</td>
-    <td class="td-r">${y.vcr_threshold?y.vcr_threshold+'%':'\u2014'}</td>
-    <td>${statusBadge(y.active?'active':'paused')}</td>
-    <td><button class="btn-act" onclick="yieldModule.openEdit('${y.id}')">Edit</button> <button class="btn-act" style="color:var(--danger);border-color:var(--danger)" onclick="yieldModule.openDelete('${y.id}',${JSON.stringify(y.name)})">Del</button></td>
-  </tr>`).join('');
-}
-
-// Ad Units page renderer (Supply: videoModule — shows publisher placements + linked Campaign demand)
-function adUnitsRender(){
-  const vids=typeof videoModule!=='undefined'?videoModule.list():[];
-  const pubs=typeof pubModule!=='undefined'?pubModule.list():[];
-  const camps=typeof campModule!=='undefined'?campModule.list():[];
-  setText('adunits-count',vids.length+' ad unit'+(vids.length!==1?'s':''));
-  const tb=document.getElementById('adunits-tbody');
-  if(!vids.length){tb.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:32px">No ad units yet. Click <strong>Add Ad Unit</strong> to create one.</td></tr>';return;}
-  tb.innerHTML=vids.map(v=>{
-    const pub=pubs.find(p=>p.id===v.publisher_id);
-    const camp=camps.find(c=>c.id===v.campaign_id);
-    const pubName=pub?escHtml(pub.name):'<span style="color:var(--muted)">&#8212;</span>';
-    const campCol=camp
-      ?`<a href="#" onclick="campModule.openEdit('${camp.id}');return false" style="color:var(--primary)">${escHtml(camp.name)}</a>`
-      :'<span style="color:var(--muted)" title="No campaign linked — runs Prebid auction">&#126; Prebid</span>';
-    const vastTag=`/video/vast?placement_id=${encodeURIComponent(v.id)}`+(v.publisher_id?`&publisher_id=${encodeURIComponent(v.publisher_id)}`:``)+`&cb=[CACHEBUSTER]&url=[URL]`;
-    const endpointCol=`<a href="${escHtml(vastTag)}" target="_blank" style="color:var(--primary);font-size:11px" title="${escHtml(vastTag)}">VAST tag &#8599;</a>`;
-    return `<tr>
-      <td>${swHtml(v.id,!!v.active,'toggleVid')}</td>
-      <td class="td-id">${escHtml(v.id)}</td>
-      <td class="td-name"><a href="#" style="color:inherit;text-decoration:none" onclick="videoModule.openEdit('${v.id}');return false">${escHtml(v.name)}</a></td>
-      <td>${pubName}</td>
-      <td>${escHtml(v.environment||'')}</td>
-      <td>${escHtml(v.placement||'')}</td>
-      <td class="td-r">${v.floor_cpm!=null?fmtC(v.floor_cpm):'&#8212;'}</td>
-      <td>${campCol}</td>
-      <td>${endpointCol}</td>
-      <td><button class="btn-act" onclick="videoModule.openEdit('${v.id}')">Edit</button> <button class="btn-act" style="color:var(--danger);border-color:var(--danger)" onclick="videoModule.openDelete('${v.id}','${escHtml(v.name)}')">Del</button></td>
-    </tr>`;
-  }).join('');
-}
-window.toggleVid=function(id,v){const vid=typeof videoModule!=='undefined'?videoModule.list().find(x=>x.id===id):null;if(!vid)return;fetch(`/dashboard/video/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...vid,active:v})}).then(()=>adUnitsRender());};
-
-// Campaigns page renderer (Demand: campModule — third-party VAST/ORTB endpoints)
-function campaignsRender(){
-  const camps=typeof campModule!=='undefined'?campModule.list():[];
-  const pubs=typeof pubModule!=='undefined'?pubModule.list():[];
-  const advs=typeof advModule!=='undefined'?advModule.list():[];
-  setText('campaigns-count',camps.length+' campaign'+(camps.length!==1?'s':''));
-  const tb=document.getElementById('campaigns-tbody');
-  if(!camps.length){tb.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px">No campaigns yet. Click <strong>Add Campaign</strong> to create one.</td></tr>';return;}
-  tb.innerHTML=camps.map(c=>{
-    const adv=advs.find(a=>a.id===c.advertiser_id);
-    const pub=pubs.find(p=>p.id===c.publisher_id);
-    const vastShort=c.vast_tag_url?`<a href="${escHtml(c.vast_tag_url)}" target="_blank" title="${escHtml(c.vast_tag_url)}" style="color:var(--primary)">VAST &#8599;</a>`:'<span style="color:var(--muted)">&#8212;</span>';
-    const ortbShort=c.ortb_endpoint_url?`<a href="${escHtml(c.ortb_endpoint_url)}" target="_blank" title="${escHtml(c.ortb_endpoint_url)}" style="color:var(--primary)">OpenRTB &#8599;</a>`:'<span style="color:var(--muted)">&#8212;</span>';
-    return `<tr>
-      <td class="td-id">${escHtml(c.id)}</td>
-      <td class="td-name"><a href="#" style="color:inherit;text-decoration:none" onclick="campModule.openEdit('${c.id}');return false">${escHtml(c.name)}</a></td>
-      <td>${adv?escHtml(adv.name):'<span style="color:var(--muted)">&#8212;</span>'}</td>
-      <td>${pub?escHtml(pub.name):'<span style="color:var(--muted)">&#8212;</span>'}</td>
-      <td>${vastShort}</td>
-      <td>${ortbShort}</td>
-      <td class="td-r">${c.floor_cpm!=null?fmtC(c.floor_cpm):'&#8212;'}</td>
-      <td>${statusBadge(c.status)}</td>
-      <td><button class="btn-act" onclick="campModule.openEdit('${c.id}')">Edit</button> <button class="btn-act" style="color:var(--danger);border-color:var(--danger)" onclick="campModule.openDelete('${c.id}','${escHtml(c.name)}')">Del</button></td>
-    </tr>`;
-  }).join('');
-}
-
-// Reports module
-const RPT_COLS={
-  pub:['Date','Publisher','Requests','Impressions','Revenue (USD)','eCPM (USD)','Fill Rate','Attempts','Wins','Win Rate'],
-  deals:['Date','Month','Day','Deal ID','Deal Name','Requests','Impressions','Revenue (USD)','Fill Rate','eCPM (USD)'],
-  detailed:['Date','Publisher','Placement','Requests','Impressions','Revenue (USD)','eCPM (USD)','Attempts','Wins','Fill Rate'],
-  demand:['Date','Demand Partner','Campaign','Bid Requests','Bids','Wins','Impressions','Revenue (USD)','eCPM (USD)','Bid CPM (USD)','Win Rate','Response Rate']
-};
-let _rptTab='pub',_rptRows=[],_rptPage=1,_rptPerPage=20,_rptSort={col:0,dir:1};
-function rptInitDates(){
-  const now=new Date();
-  const pad=n=>String(n).padStart(2,'0');
-  const today=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  if(!document.getElementById('rpt-date-from').value)document.getElementById('rpt-date-from').value=today;
-  if(!document.getElementById('rpt-date-to').value)document.getElementById('rpt-date-to').value=today;
-}
-function rptSetTab(tab,btn){
-  _rptTab=tab;
-  document.querySelectorAll('.rpt-tab').forEach(b=>b.classList.remove('active'));
-  if(btn)btn.classList.add('active');
-  const titles={pub:'Publisher Summary',deals:'Deals Summary',detailed:'Detailed Reporting',demand:'Demand Reporting',bidlog:'Bid Log'};
-  setText('rpt-breadcrumb-title',titles[tab]||'Publisher Summary');
-  const isBidlog=tab==='bidlog';
-  // toggle filter card visibility
-  const filterCard=document.querySelector('#page-reports .rpt-filter-card');
-  if(filterCard) filterCard.style.display=isBidlog?'none':'';
-  document.getElementById('rpt-results').style.display='none';
-  document.getElementById('bidlog-section').style.display=isBidlog?'':'none';
-}
-function bidlogFetch(){
-  const params=new URLSearchParams();
-  const c=v('bl-campaign'); if(c) params.set('campaign_id',c);
-  const cr=v('bl-crid'); if(cr) params.set('crid',cr);
-  const ad=v('bl-adomain'); if(ad) params.set('adomain',ad);
-  const bi=v('bl-bidder'); if(bi) params.set('bidder',bi);
-  const ev=v('bl-event'); if(ev) params.set('event_type',ev);
-  const pu=v('bl-pubid'); if(pu) params.set('publisher_id',pu);
-  const btn=document.getElementById('bl-search-btn');
-  if(btn){btn.disabled=true;btn.textContent='Loading…';}
-  setText('bl-status','');
-  fetch('/dashboard/reports?'+params.toString())
-    .then(r=>r.json())
-    .then(data=>{
-      const rows=Array.isArray(data.entries)?data.entries:[];
-      const tb=document.getElementById('bl-tbody');
-      if(!rows.length){
-        tb.innerHTML='<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:32px">No bid report entries found for the current filters.</td></tr>';
-        setText('bl-status','0 results');
-        return;
-      }
-      tb.innerHTML=rows.map(r=>{
-        const ev=r.event_type||'';
-        const evCls=ev==='win'||ev==='impression'?'bdg bdg-live':ev==='error'?'bdg bdg-paused':'bdg bdg-limited';
-        const ad=Array.isArray(r.adomain)?r.adomain.join(', '):(r.adomain||'');
-        const t=r.event_time?new Date(r.event_time).toLocaleString():'—';
-        const pr=r.price!=null?'$'+Number(r.price).toFixed(4):'—';
-        return `<tr>
-          <td><span class="${evCls}">${escHtml(ev)}</span></td>
-          <td>${escHtml(r.bidder||'')}</td>
-          <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(ad)}">${escHtml(ad)}</td>
-          <td>${escHtml(r.crid||'')}</td>
-          <td>${escHtml(r.campaign_id||'')}</td>
-          <td class="td-r">${pr}</td>
-          <td>${escHtml(r.currency||'USD')}</td>
-          <td>${escHtml(r.publisher_id||'')}</td>
-          <td>${escHtml(r.ad_unit_id||'')}</td>
-          <td>${escHtml(r.domain||r.app_bundle||'')}</td>
-          <td>${escHtml(r.country_code||'')}</td>
-          <td>${escHtml(r.env||'')}</td>
-          <td style="font-family:monospace;font-size:11px">${escHtml((r.request_id||'').slice(0,16)+(r.request_id&&r.request_id.length>16?'…':''))}</td>
-          <td style="font-size:11px;color:var(--muted)">${t}</td>
-        </tr>`;
-      }).join('');
-      setText('bl-status',rows.length+' result'+(rows.length===1?'':'s'));
-    })
-    .catch(err=>{
-      document.getElementById('bl-tbody').innerHTML='<tr><td colspan="14" style="text-align:center;color:var(--danger,#dc2626);padding:32px">Error loading reports: '+escHtml(String(err))+'</td></tr>';
-    })
-    .finally(()=>{
-      if(btn){btn.disabled=false;btn.textContent='Search';}
-    });
-}
-function bidlogReset(){
-  ['bl-campaign','bl-crid','bl-adomain','bl-bidder','bl-pubid'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  const ev=document.getElementById('bl-event'); if(ev) ev.selectedIndex=0;
-}
-function bidlogCSV(){
-  const rows=document.querySelectorAll('#bl-tbody tr');
-  if(!rows.length) return;
-  const headers=['Event','Bidder','Ad Domain','Creative ID','Campaign ID','Price','Currency','Publisher ID','Ad Unit ID','Domain','Country','Env','Request ID','Time'];
-  const lines=[headers.join(',')];
-  rows.forEach(tr=>{
-    const cells=[...tr.querySelectorAll('td')].map(td=>'"'+td.textContent.replace(/"/g,'""')+'"');
-    if(cells.length>1) lines.push(cells.join(','));
-  });
-  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='bid-log.csv'; a.click();
-}
-function v(id){const el=document.getElementById(id);return el?el.value.trim():'';}
-
-function rptReset(){
-  ['rpt-tz','rpt-interval','rpt-traffic','rpt-media','rpt-device','rpt-placement','rpt-imptype','rpt-groupby'].forEach(id=>{
-    const el=document.getElementById(id); if(el) el.selectedIndex=0;
-  });
-  document.getElementById('rpt-date-from').value='';
-  document.getElementById('rpt-date-to').value='';
-  rptInitDates();
-  document.getElementById('rpt-results').style.display='none';
-}
-async function rptGenerate(){
-  const cols=RPT_COLS[_rptTab];
-  const pubs=typeof pubModule!=='undefined'?pubModule.list():[];
-  const advs=typeof advModule!=='undefined'?advModule.list():[];
-  const camps=typeof campModule!=='undefined'?campModule.list():[];
-  const from=document.getElementById('rpt-date-from').value;
-  const to=document.getElementById('rpt-date-to').value;
-  // Fetch real cumulative stats from server for realistic totals
-  let liveStats=null;
-  try{
-    const sr=await fetch('/dashboard/stats/video');
-    if(sr.ok){const sd=await sr.json();liveStats=sd.total||null;}
-  }catch(e){console.warn('rptGenerate: stats fetch failed',e);}
-  const liveReqs  = liveStats?(liveStats.ad_requests  ||0):0;
-  const liveImps  = liveStats?(liveStats.impressions   ||0):0;
-  const liveRev   = liveStats?(liveStats.revenue       ||0):0;
-  const liveCompl = liveStats?(liveStats.completes     ||0):0;
-  _rptRows=[];
-  const d1=from?new Date(from):new Date(); const d2=to?new Date(to):new Date();
-  let dayCount=0;
-  for(let d=new Date(d1);d<=d2;d.setDate(d.getDate()+1))dayCount++;
-  if(dayCount<1)dayCount=1;
-  const baseReqs = liveReqs>0?Math.round(liveReqs/dayCount):Math.round((camps.length||1)*50000);
-  const baseImps = liveImps>0?Math.round(liveImps/dayCount):Math.round(baseReqs*0.015);
-  const baseRev  = liveRev>0?(liveRev/dayCount):parseFloat((baseImps*8.5/1000).toFixed(4));
-  for(let d=new Date(d1);d<=d2;d.setDate(d.getDate()+1)){
-    const ds=d.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
-    const mo=d.getMonth()+1; const dy=d.getDate();
-    // Daily jitter ±15% around the per-day average derived from live stats
-    const jitter=()=>0.85+Math.random()*.3;
-    const reqs=Math.round(baseReqs*jitter());
-    const imps=Math.round(baseImps*jitter());
-    const grossEarnTotal=parseFloat((baseRev*jitter()).toFixed(2));
-    const att=Math.round(imps*22+Math.random()*5000);
-    const wins=Math.round(att*(0.88+Math.random()*.1));
-    const fill=parseFloat((reqs>0?imps/reqs*100:0).toFixed(4));
-    const grossEcpmTotal=imps>0?parseFloat((grossEarnTotal/imps*1000).toFixed(2)):0;
-    const winRateTotal=att>0?parseFloat((wins/att*100).toFixed(2)):0;
-    if(_rptTab==='pub'){
-      (pubs.length?pubs:[{name:'Direct Publisher'}]).slice(0,Math.max(1,Math.min(pubs.length,4))).forEach((p,pi)=>{
-        const n=pubs.length||1;
-        const split=1/n;
-        const r2=Math.round(reqs*split*(0.9+Math.random()*.2));
-        const i2=Math.round(imps*split*(0.9+Math.random()*.2));
-        const g2=parseFloat((grossEarnTotal*split*(0.9+Math.random()*.2)).toFixed(2));
-        const gecpm2=i2>0?parseFloat((g2/i2*1000).toFixed(2)):0;
-        const att2=Math.round(i2*22+Math.random()*2000);
-        const wins2=Math.round(att2*(0.88+Math.random()*.1));
-        const fill2=r2>0?parseFloat((i2/r2*100).toFixed(4)):0;
-        const wr2=att2>0?parseFloat((wins2/att2*100).toFixed(2)):0;
-        _rptRows.push({Date:ds,Publisher:p.name,Requests:r2,Impressions:i2,'Revenue (USD)':g2,'eCPM (USD)':gecpm2,'Fill Rate':fill2+'%',Attempts:att2,Wins:wins2,'Win Rate':wr2+'%'});
-      });
-    } else if(_rptTab==='deals') _rptRows.push({Date:ds,Month:mo,Day:dy,'Deal ID':'DL-'+Math.floor(Math.random()*9000+1000),'Deal Name':'Deal '+dy,Requests:reqs,Impressions:imps,'Revenue (USD)':grossEarnTotal,'Fill Rate':fill+'%','eCPM (USD)':grossEcpmTotal});
-    else if(_rptTab==='detailed'){
-      (pubs.length?pubs:[{name:'Direct'}]).slice(0,2).forEach(p=>{
-        ['In-Stream','Out-Stream'].forEach(placement=>{
-          const r2=Math.round(reqs/4*(0.85+Math.random()*.3));
-          const i2=Math.round(imps/4*(0.85+Math.random()*.3));
-          const g2=parseFloat((grossEarnTotal/4*(0.85+Math.random()*.3)).toFixed(2));
-          const gecpm2=i2>0?parseFloat((g2/i2*1000).toFixed(2)):0;
-          const att2=Math.round(i2*22+Math.random()*1000);
-          const wins2=Math.round(att2*(0.88+Math.random()*.1));
-          const fill2=r2>0?parseFloat((i2/r2*100).toFixed(4)):0;
-          _rptRows.push({Date:ds,Publisher:p.name,Placement:placement,Requests:r2,Impressions:i2,'Revenue (USD)':g2,'eCPM (USD)':gecpm2,Attempts:att2,Wins:wins2,'Fill Rate':fill2+'%'});
-        });
-      });
-    } else {
-      const demandPartners=advs.length?advs:[{name:'SpotX'},{name:'Google ADX'},{name:'PubMatic'},{name:'Magnite'},{name:'OpenX'}];
-      demandPartners.slice(0,Math.max(1,Math.min(demandPartners.length,5))).forEach((a,ai)=>{
-        const n=demandPartners.length||1;
-        const bidReqs=Math.round(reqs/n*(0.85+Math.random()*.3));
-        const bids=Math.round(bidReqs*(0.30+Math.random()*.25));
-        const dWins=Math.round(bids*(0.35+Math.random()*.3));
-        const dImps=Math.round(dWins*(0.97+Math.random()*.03));
-        const g2=parseFloat((dImps*(6.5+Math.random()*5)/1000).toFixed(2));
-        const gecpm2=dImps>0?parseFloat((g2/dImps*1000).toFixed(2)):0;
-        const bidCpm=bidReqs>0?parseFloat((g2/bidReqs*1000).toFixed(2)):0;
-        const wr=bids>0?parseFloat((dWins/bids*100).toFixed(2)):0;
-        const rr=bidReqs>0?parseFloat((bids/bidReqs*100).toFixed(2)):0;
-        _rptRows.push({Date:ds,'Demand Partner':a.name,Campaign:'Camp-'+dy,'Bid Requests':bidReqs,Bids:bids,Wins:dWins,Impressions:dImps,'Revenue (USD)':g2,'eCPM (USD)':gecpm2,'Bid CPM (USD)':bidCpm,'Win Rate':wr+'%','Response Rate':rr+'%'});
-      });
-    }
-  }
-  _rptPage=1;
-  rptRenderTable(cols);
-  document.getElementById('rpt-results').style.display='';
-}
-function rptRenderTable(cols){
-  cols=cols||RPT_COLS[_rptTab];
-  // header
-  document.getElementById('rpt-thead').innerHTML='<tr>'+cols.map((c,i)=>`<th onclick="rptSortBy(${i})">${escHtml(c)}<span class="sort-arrows">${_rptSort.col===i?(_rptSort.dir===1?'▲':'▼'):'⇅'}</span></th>`).join('')+'</tr>';
-  // sort
-  const rows=[..._rptRows].sort((a,b)=>{
-    const k=cols[_rptSort.col]; const av=a[k],bv=b[k];
-    const an=parseFloat(String(av).replace(/[^0-9.]/g,'')),bn=parseFloat(String(bv).replace(/[^0-9.]/g,''));
-    const cmp=isNaN(an)?String(av||'').localeCompare(String(bv||'')):an-bn;
-    return cmp*_rptSort.dir;
-  });
-  // paginate
-  const total=rows.length; const pages=Math.max(1,Math.ceil(total/_rptPerPage));
-  const start=(_rptPage-1)*_rptPerPage,slice=rows.slice(start,start+_rptPerPage);
-  document.getElementById('rpt-tbody').innerHTML=slice.length?slice.map(r=>'<tr>'+cols.map(c=>`<td>${escHtml(String(r[c]??''))}</td>`).join('')+'</tr>').join(''):'<tr><td colspan="'+cols.length+'" style="text-align:center;color:var(--muted);padding:28px">No data for the selected filters.</td></tr>';
-  // totals row
-  const numCols=cols.filter((_,i)=>i>2);
-  const totals=Object.fromEntries(cols.map(c=>[c,c]));
-  cols.forEach((c,i)=>{ if(i<3){totals[c]='-';return;} const vals=rows.map(r=>parseFloat(String(r[c]||'0').replace(/[^0-9.]/g,''))).filter(n=>!isNaN(n)); const s=vals.reduce((a,b)=>a+b,0); totals[c]=c.includes('%')?parseFloat((s/Math.max(rows.length,1)).toFixed(4))+'%':c.includes('eCPM')||c.includes('Earn')||c.includes('Fee')?parseFloat(s.toFixed(2)):Math.round(s); });
-  document.getElementById('rpt-tfoot').innerHTML='<tr>'+cols.map(c=>`<td>${escHtml(String(totals[c]??''))}</td>`).join('')+'</tr>';
-  // pagination
-  let pg=''; for(let i=1;i<=pages;i++) pg+=`<button class="rpt-pg-btn${i===_rptPage?' active':''}" onclick="rptGoPage(${i})">${i}</button>`;
-  document.getElementById('rpt-pagination').innerHTML=pages>1?pg:'';
-}
-function rptSortBy(i){
-  if(_rptSort.col===i) _rptSort.dir*=-1; else{_rptSort.col=i;_rptSort.dir=1;}
-  rptRenderTable();
-}
-function rptGoPage(p){_rptPage=p;rptRenderTable();}
-function rptDownloadCSV(){
-  if(!_rptRows.length){rptGenerate();}
-  const cols=RPT_COLS[_rptTab];
-  const csv=[cols.join(','),..._rptRows.map(r=>cols.map(c=>{
-    const v=String(r[c]??''); return v.includes(',')?'"'+v+'"':v;
-  }).join(','))].join('\n');
-  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='report_'+_rptTab+'_'+new Date().toISOString().slice(0,10)+'.csv';
-  a.click();
-}
-// ── Bidders analytics ───────────────────────────────────────────────────────
-async function biddersRender(){
-  const tbody=document.getElementById('bidders-tbody');
-  tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px">Loading&#8230;</td></tr>';
-  let events=[];
-  try{
-    const r=await fetch('/video/tracking/events');
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    events=await r.json();
-  }catch(e){
-    tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--danger);padding:32px">Failed to load: '+e.message+'</td></tr>';
-    return;
-  }
-  if(!Array.isArray(events)||events.length===0){
-    tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px">No tracking events recorded yet.</td></tr>';
-    return;
-  }
-  // Aggregate by bidder + placement
-  const agg={};
-  events.forEach(ev=>{
-    const key=(ev.bidder||'(unknown)')+'|'+(ev.placement_id||'');
-    if(!agg[key]) agg[key]={bidder:ev.bidder||'(unknown)',placement:ev.placement_id||'',imp:0,start:0,q1:0,mid:0,q3:0,complete:0};
-    const a=agg[key];
-    if(ev.event==='impression') a.imp++;
-    else if(ev.event==='start') a.start++;
-    else if(ev.event==='firstQuartile') a.q1++;
-    else if(ev.event==='midpoint') a.mid++;
-    else if(ev.event==='thirdQuartile') a.q3++;
-    else if(ev.event==='complete') a.complete++;
-  });
-  const rows=Object.values(agg).sort((a,b)=>b.imp-a.imp);
-  tbody.innerHTML=rows.map(a=>{
-    const vcr=a.imp>0?Math.round(a.complete/a.imp*100):0;
-    return `<tr>
-      <td><strong>${esc(a.bidder)}</strong></td>
-      <td style="color:var(--muted);font-size:12px">${esc(a.placement)}</td>
-      <td class="td-r">${a.imp.toLocaleString()}</td>
-      <td class="td-r">${a.start.toLocaleString()}</td>
-      <td class="td-r">${a.q1.toLocaleString()}</td>
-      <td class="td-r">${a.mid.toLocaleString()}</td>
-      <td class="td-r">${a.q3.toLocaleString()}</td>
-      <td class="td-r">${a.complete.toLocaleString()}</td>
-      <td class="td-r"><span style="font-weight:600;color:${vcr>=70?'var(--success)':vcr>=40?'var(--warning)':'var(--danger)'}">${vcr}%</span></td>
-    </tr>`;
-  }).join('');
-}
-function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
-
-// ── Bidder Scorecard module ───────────────────────────────────────────────────
-const bscModule=(()=>{
-  let _editId=null,_all=[];
-  async function fetchAll(){
-    try{const r=await fetch('/dashboard/bidder-scorecards');const d=await r.json();_all=d.entries||[];}catch(e){_all=[];}
-  }
-  function pct(v){return typeof v==='number'?Math.round(v*100)+'%':'—';}
-  function list(){
-    const tbody=document.getElementById('bsc-tbody');
-    if(!_all.length){tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:32px">No scorecards yet</td></tr>';document.getElementById('bsc-count').textContent='';return;}
-    document.getElementById('bsc-count').textContent=_all.length+' bidder'+(+_all.length===1?'':'s');
-    tbody.innerHTML=_all.map(b=>{
-      const ev=typeof b.expected_value==='number'?b.expected_value.toFixed(3):'-';
-      const ecpm=typeof b.effective_cpm==='number'?'$'+b.effective_cpm.toFixed(2):'-';
-      const sup=b.suppressed_until&&new Date(b.suppressed_until)>new Date();
-      const badge=sup?'<span class="bdg bdg-paused">Suppressed</span>':(b.active?'<span class="bdg bdg-live">Active</span>':'<span class="bdg bdg-paused">Inactive</span>');
-      return`<tr>
-        <td><strong>${esc(b.bidder_name)}</strong>${b.notes?`<div style='font-size:11px;color:var(--muted)'>${esc(b.notes)}</div>`:''}</td>
-        <td class="td-r">${pct(b.bid_rate)}</td>
-        <td class="td-r">${pct(b.win_rate)}</td>
-        <td class="td-r">${pct(b.render_success_rate)}</td>
-        <td class="td-r">${pct(b.completion_rate)}</td>
-        <td class="td-r" style="color:${(b.vast_error_rate||0)>0.1?'var(--danger)':'inherit'}">${pct(b.vast_error_rate)}</td>
-        <td class="td-r" style="color:${(b.timeout_rate||0)>0.1?'var(--warning)':'inherit'}">${pct(b.timeout_rate)}</td>
-        <td class="td-r">${ecpm}</td>
-        <td class="td-r"><strong>${ev}</strong></td>
-        <td>${badge}</td>
-        <td><button class="btn-ic" onclick="bscModule.openEdit('${b.id}')">&#9998;</button> <button class="btn-ic btn-ic-del" onclick="bscModule.openDelete('${b.id}')">&#128465;</button></td>
-      </tr>`;
-    }).join('');
-  }
-  function _resetForm(){
-    ['bs-name','bs-avg-cpm','bs-eff-cpm','bs-exp-val','bs-wrapper','bs-bid-rate','bs-win-rate',
-     'bs-render','bs-completion','bs-vast-err','bs-timeout','bs-discrepancy','bs-notes'].forEach(id=>{
-      const el=document.getElementById(id);if(el)el.value='';
-    });
-    document.getElementById('bs-active').checked=true;
-    document.getElementById('bscFormError').textContent='';
-    _editId=null;
-  }
-  function openCreate(){_resetForm();document.getElementById('bscModalTitle').textContent='Add Bidder Scorecard';document.getElementById('bscModal').classList.add('open');}
-  function openEdit(id){
-    const b=_all.find(x=>x.id===id);if(!b)return;
-    _editId=id;
-    document.getElementById('bscModalTitle').textContent='Edit Scorecard — '+b.bidder_name;
-    const s=(field,val)=>{const el=document.getElementById(field);if(el)el.value=val!=null?val:'';};
-    s('bs-name',b.bidder_name);s('bs-avg-cpm',b.avg_bid_cpm);s('bs-eff-cpm',b.effective_cpm);
-    s('bs-exp-val',b.expected_value);s('bs-wrapper',b.avg_wrapper_depth);
-    s('bs-bid-rate',b.bid_rate);s('bs-win-rate',b.win_rate);s('bs-render',b.render_success_rate);
-    s('bs-completion',b.completion_rate);s('bs-vast-err',b.vast_error_rate);
-    s('bs-timeout',b.timeout_rate);s('bs-discrepancy',b.discrepancy_rate);s('bs-notes',b.notes);
-    document.getElementById('bs-active').checked=!!b.active;
-    document.getElementById('bscFormError').textContent='';
-    document.getElementById('bscModal').classList.add('open');
-  }
-  function closeModal(){document.getElementById('bscModal').classList.remove('open');}
-  async function save(){
-    const payload={
-      bidder_name:document.getElementById('bs-name').value.trim(),
-      avg_bid_cpm:parseFloat(document.getElementById('bs-avg-cpm').value)||0,
-      effective_cpm:parseFloat(document.getElementById('bs-eff-cpm').value)||0,
-      expected_value:parseFloat(document.getElementById('bs-exp-val').value)||0,
-      avg_wrapper_depth:parseFloat(document.getElementById('bs-wrapper').value)||0,
-      bid_rate:parseFloat(document.getElementById('bs-bid-rate').value)||0,
-      win_rate:parseFloat(document.getElementById('bs-win-rate').value)||0,
-      render_success_rate:parseFloat(document.getElementById('bs-render').value)||0,
-      completion_rate:parseFloat(document.getElementById('bs-completion').value)||0,
-      vast_error_rate:parseFloat(document.getElementById('bs-vast-err').value)||0,
-      timeout_rate:parseFloat(document.getElementById('bs-timeout').value)||0,
-      discrepancy_rate:parseFloat(document.getElementById('bs-discrepancy').value)||0,
-      notes:document.getElementById('bs-notes').value.trim(),
-      active:document.getElementById('bs-active').checked,
-    };
-    const url=_editId?'/dashboard/bidder-scorecards/'+_editId:'/dashboard/bidder-scorecards';
-    const method=_editId?'PUT':'POST';
-    const res=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const data=await res.json();
-    if(!res.ok){document.getElementById('bscFormError').textContent=data.error||'Save failed';return;}
-    closeModal();await fetchAll();list();
-  }
-  function openDelete(id){
-    const b=_all.find(x=>x.id===id);if(!b)return;
-    genericConfirmObj.open('Delete scorecard "'+b.bidder_name+'"?',async()=>{
-      await fetch('/dashboard/bidder-scorecards/'+id,{method:'DELETE'});
-      await fetchAll();list();
-    });
-  }
-  return{fetchAll,list,openCreate,openEdit,closeModal,save,openDelete};
-})();
-
-function bscRender(){bscModule.fetchAll().then(()=>bscModule.list());}
-
-// ── Dynamic Floor Rule module ─────────────────────────────────────────────────
-const dflModule=(()=>{
-  let _editId=null,_all=[];
-  async function fetchAll(){
-    try{const r=await fetch('/dashboard/floor-rules');const d=await r.json();_all=d.entries||[];}catch(e){_all=[];}
-  }
-  function list(){
-    const tbody=document.getElementById('dfl-tbody');
-    if(!_all.length){tbody.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:32px">No floor rules yet</td></tr>';document.getElementById('dfl-count').textContent='';return;}
-    document.getElementById('dfl-count').textContent=_all.length+' rule'+(+_all.length===1?'':'s');
-    tbody.innerHTML=_all.map(d=>{
-      const sg=d.segment||{};
-      const badge=d.active?'<span class="bdg bdg-live">Active</span>':'<span class="bdg bdg-paused">Inactive</span>';
-      return`<tr>
-        <td><strong>${esc(d.name)}</strong></td>
-        <td>${esc(sg.env||'*')}</td>
-        <td>${esc(sg.geo_country||'*')}</td>
-        <td>${esc(sg.device_type||'*')}</td>
-        <td class="td-r">$${(d.base_floor||0).toFixed(2)}</td>
-        <td class="td-r">${d.soft_floor?'$'+d.soft_floor.toFixed(2):'—'}</td>
-        <td class="td-r">${d.min_floor?'$'+d.min_floor.toFixed(2):'—'}</td>
-        <td class="td-r">${d.max_floor?'$'+d.max_floor.toFixed(2):'—'}</td>
-        <td>${d.auto_adjust?'<span style="color:var(--success);font-weight:600">&#10003; On</span>':'<span style="color:var(--muted)">Off</span>'}</td>
-        <td>${esc(d.demand_path||'*')}</td>
-        <td>${badge}</td>
-        <td><button class="btn-ic" onclick="dflModule.openEdit('${d.id}')">&#9998;</button> <button class="btn-ic btn-ic-del" onclick="dflModule.openDelete('${d.id}')">&#128465;</button></td>
-      </tr>`;
-    }).join('');
-  }
-  function _resetForm(){
-    ['df-name','df-publisher','df-adunit','df-geo','df-genre','df-base','df-soft','df-min','df-max','df-priority'].forEach(id=>{
-      const el=document.getElementById(id);if(el)el.value='';
-    });
-    document.getElementById('df-slot').value='0';
-    document.getElementById('df-daypart').value='-1';
-    document.getElementById('df-env').value='';
-    document.getElementById('df-device').value='';
-    document.getElementById('df-path').value='';
-    document.getElementById('df-auto').checked=false;
-    document.getElementById('df-active').checked=true;
-    document.getElementById('dflFormError').textContent='';
-    onAutoChange();_editId=null;
-  }
-  function onAutoChange(){
-    const on=document.getElementById('df-auto').checked;
-    ['df-fill-grp','df-step-grp'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=on?'':'none';});
-  }
-  function openCreate(){_resetForm();document.getElementById('dflModalTitle').textContent='Add Floor Rule';document.getElementById('dflModal').classList.add('open');}
-  function openEdit(id){
-    const d=_all.find(x=>x.id===id);if(!d)return;
-    _editId=id;
-    document.getElementById('dflModalTitle').textContent='Edit Floor Rule — '+d.name;
-    const sg=d.segment||{};
-    const s=(fld,val)=>{const el=document.getElementById(fld);if(el)el.value=val!=null?val:'';};
-    s('df-name',d.name);s('df-publisher',d.publisher_id);s('df-adunit',d.ad_unit_id);
-    document.getElementById('df-env').value=sg.env||'';
-    s('df-geo',sg.geo_country);
-    document.getElementById('df-device').value=sg.device_type||'';
-    s('df-genre',sg.content_genre);
-    s('df-slot',sg.slot_in_pod!=null?sg.slot_in_pod:0);
-    s('df-daypart',sg.daypart_hour!=null?sg.daypart_hour:-1);
-    s('df-base',d.base_floor);s('df-soft',d.soft_floor);s('df-min',d.min_floor);s('df-max',d.max_floor);
-    document.getElementById('df-path').value=d.demand_path||'';
-    s('df-priority',d.priority);
-    document.getElementById('df-auto').checked=!!d.auto_adjust;
-    s('df-fill',d.target_fill_rate);s('df-step',d.floor_step_pct);
-    document.getElementById('df-active').checked=!!d.active;
-    document.getElementById('dflFormError').textContent='';
-    onAutoChange();
-    document.getElementById('dflModal').classList.add('open');
-  }
-  function closeModal(){document.getElementById('dflModal').classList.remove('open');}
-  async function save(){
-    const seg={env:document.getElementById('df-env').value,geo_country:document.getElementById('df-geo').value.trim().toUpperCase(),device_type:document.getElementById('df-device').value,content_genre:document.getElementById('df-genre').value.trim(),slot_in_pod:parseInt(document.getElementById('df-slot').value)||0,daypart_hour:parseInt(document.getElementById('df-daypart').value)};
-    const auto=document.getElementById('df-auto').checked;
-    const payload={name:document.getElementById('df-name').value.trim(),publisher_id:document.getElementById('df-publisher').value.trim(),ad_unit_id:document.getElementById('df-adunit').value.trim(),segment:seg,base_floor:parseFloat(document.getElementById('df-base').value)||0,soft_floor:parseFloat(document.getElementById('df-soft').value)||0,min_floor:parseFloat(document.getElementById('df-min').value)||0,max_floor:parseFloat(document.getElementById('df-max').value)||0,demand_path:document.getElementById('df-path').value,priority:parseInt(document.getElementById('df-priority').value)||0,auto_adjust:auto,target_fill_rate:auto?parseFloat(document.getElementById('df-fill').value)||0:0,floor_step_pct:auto?parseFloat(document.getElementById('df-step').value)||0:0,active:document.getElementById('df-active').checked};
-    const url=_editId?'/dashboard/floor-rules/'+_editId:'/dashboard/floor-rules';
-    const res=await fetch(url,{method:_editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const data=await res.json();
-    if(!res.ok){document.getElementById('dflFormError').textContent=data.error||'Save failed';return;}
-    closeModal();await fetchAll();list();
-  }
-  function openDelete(id){
-    const d=_all.find(x=>x.id===id);if(!d)return;
-    genericConfirmObj.open('Delete floor rule "'+d.name+'"?',async()=>{await fetch('/dashboard/floor-rules/'+id,{method:'DELETE'});await fetchAll();list();});
-  }
-  return{fetchAll,list,openCreate,openEdit,closeModal,save,openDelete,onAutoChange};
-})();
-
-function dflRender(){dflModule.fetchAll().then(()=>dflModule.list());}
-
-// ── Request QA Profile module ─────────────────────────────────────────────────
-const qaModule=(()=>{
-  let _editId=null,_all=[],_fields=[];
-  async function fetchAll(){
-    try{const r=await fetch('/dashboard/qa-profiles');const d=await r.json();_all=d.entries||[];}catch(e){_all=[];}
-  }
-  function list(){
-    const tbody=document.getElementById('qa-tbody');
-    if(!_all.length){tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:32px">No QA profiles yet</td></tr>';document.getElementById('qa-count').textContent='';return;}
-    document.getElementById('qa-count').textContent=_all.length+' profile'+(+_all.length===1?'':'s');
-    const chk=v=>`<span style="color:${v?'var(--success)':'var(--muted)'}">${v?'&#10003;':'&#8212;'}</span>`;
-    tbody.innerHTML=_all.map(q=>{
-      const badge=q.active?'<span class="bdg bdg-live">Active</span>':'<span class="bdg bdg-paused">Inactive</span>';
-      return`<tr>
-        <td><strong>${esc(q.name)}</strong></td>
-        <td style="font-size:12px;color:var(--muted)">${esc(q.publisher_id||'—')}</td>
-        <td>${esc(q.environment||'*')}</td>
-        <td class="td-r">${q.max_wrapper_depth||'—'}</td>
-        <td class="td-r">${q.min_floor_cpm?'$'+q.min_floor_cpm.toFixed(2):'—'}</td>
-        <td class="td-r">${chk(q.require_consent)}</td>
-        <td class="td-r">${chk(q.require_app_ads_txt)}</td>
-        <td class="td-r">${chk(q.require_schain)}</td>
-        <td>${badge}</td>
-        <td><button class="btn-ic" onclick="qaModule.openEdit('${q.id}')">&#9998;</button> <button class="btn-ic btn-ic-del" onclick="qaModule.openDelete('${q.id}')">&#128465;</button></td>
-      </tr>`;
-    }).join('');
-  }
-  function _resetForm(){
-    ['qa-name','qa-publisher','qa-floor','qa-timeout','qa-blocked-cats','qa-blocked-advs'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-    document.getElementById('qa-wrap').value='';
-    document.getElementById('qa-env').value='';
-    document.getElementById('qa-consent').checked=false;
-    document.getElementById('qa-appads').checked=false;
-    document.getElementById('qa-schain').checked=false;
-    document.getElementById('qa-active').checked=true;
-    document.getElementById('qaFormError').textContent='';
-    _fields=[];_renderFields();_editId=null;
-  }
-  function _renderFields(){
-    const list=document.getElementById('qa-rules-list');
-    if(!list)return;
-    list.innerHTML=_fields.map((f,i)=>`<div style="display:grid;grid-template-columns:1fr 120px 110px 28px;gap:6px;margin-bottom:6px">
-      <input type="text" placeholder="field e.g. app.bundle" value="${esc(f.field||'')}" onchange="qaModule._setField(${i},'field',this.value)"/>
-      <select onchange="qaModule._setField(${i},'condition',this.value)">
-        <option value="always"${f.condition==='always'?' selected':''}>Always</option>
-        <option value="ctv_only"${f.condition==='ctv_only'?' selected':''}>CTV Only</option>
-        <option value="inapp_only"${f.condition==='inapp_only'?' selected':''}>In-App Only</option>
-      </select>
-      <select onchange="qaModule._setField(${i},'action',this.value)">
-        <option value="reject"${f.action==='reject'?' selected':''}>Reject</option>
-        <option value="downgrade"${f.action==='downgrade'?' selected':''}>Downgrade</option>
-        <option value="warn"${f.action==='warn'?' selected':''}>Warn</option>
-      </select>
-      <button class="btn-ic btn-ic-del" onclick="qaModule._removeField(${i})">&#215;</button>
-    </div>`).join('');
-  }
-  function addField(){_fields.push({field:'',condition:'always',action:'reject'});_renderFields();}
-  function _removeField(i){_fields.splice(i,1);_renderFields();}
-  function _setField(i,key,val){if(_fields[i])_fields[i][key]=val;}
-  function openCreate(){_resetForm();document.getElementById('qaModalTitle').textContent='Add QA Profile';document.getElementById('qaModal').classList.add('open');}
-  function openEdit(id){
-    const q=_all.find(x=>x.id===id);if(!q)return;
-    _editId=id;
-    document.getElementById('qaModalTitle').textContent='Edit QA Profile — '+q.name;
-    const s=(fld,val)=>{const el=document.getElementById(fld);if(el)el.value=val!=null?val:'';};
-    s('qa-name',q.name);s('qa-publisher',q.publisher_id);
-    document.getElementById('qa-env').value=q.environment||'';
-    s('qa-wrap',q.max_wrapper_depth);s('qa-floor',q.min_floor_cpm);s('qa-timeout',q.max_bidder_timeout_ms);
-    s('qa-blocked-cats',(q.blocked_categories||[]).join(', '));
-    s('qa-blocked-advs',(q.blocked_advertisers||[]).join(', '));
-    document.getElementById('qa-consent').checked=!!q.require_consent;
-    document.getElementById('qa-appads').checked=!!q.require_app_ads_txt;
-    document.getElementById('qa-schain').checked=!!q.require_schain;
-    document.getElementById('qa-active').checked=!!q.active;
-    _fields=(q.required_fields||[]).map(f=>({...f}));
-    document.getElementById('qaFormError').textContent='';
-    _renderFields();
-    document.getElementById('qaModal').classList.add('open');
-  }
-  function closeModal(){document.getElementById('qaModal').classList.remove('open');}
-  async function save(){
-    const splitTrim=v=>v.split(',').map(x=>x.trim()).filter(Boolean);
-    const payload={name:document.getElementById('qa-name').value.trim(),publisher_id:document.getElementById('qa-publisher').value.trim(),environment:document.getElementById('qa-env').value,max_wrapper_depth:parseInt(document.getElementById('qa-wrap').value)||0,min_floor_cpm:parseFloat(document.getElementById('qa-floor').value)||0,max_bidder_timeout_ms:parseInt(document.getElementById('qa-timeout').value)||0,blocked_categories:splitTrim(document.getElementById('qa-blocked-cats').value),blocked_advertisers:splitTrim(document.getElementById('qa-blocked-advs').value),required_fields:_fields.filter(f=>f.field),require_consent:document.getElementById('qa-consent').checked,require_app_ads_txt:document.getElementById('qa-appads').checked,require_schain:document.getElementById('qa-schain').checked,active:document.getElementById('qa-active').checked};
-    const url=_editId?'/dashboard/qa-profiles/'+_editId:'/dashboard/qa-profiles';
-    const res=await fetch(url,{method:_editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const data=await res.json();
-    if(!res.ok){document.getElementById('qaFormError').textContent=data.error||'Save failed';return;}
-    closeModal();await fetchAll();list();
-  }
-  function openDelete(id){
-    const q=_all.find(x=>x.id===id);if(!q)return;
-    genericConfirmObj.open('Delete QA profile "'+q.name+'"?',async()=>{await fetch('/dashboard/qa-profiles/'+id,{method:'DELETE'});await fetchAll();list();});
-  }
-  return{fetchAll,list,openCreate,openEdit,closeModal,save,openDelete,addField,_setField,_removeField};
-})();
-
-function qaRender(){qaModule.fetchAll().then(()=>qaModule.list());}
-
-// ── Timeout Profile module ────────────────────────────────────────────────────
-const toModule=(()=>{
-  let _editId=null,_all=[];
-  const _envLabel={ctv_client:'CTV Client',mobile_client:'Mobile Client',ssai:'SSAI',longform_pod:'Long-form Pod',default:'Default'};
-  async function fetchAll(){
-    try{const r=await fetch('/dashboard/timeout-profiles');const d=await r.json();_all=d.entries||[];}catch(e){_all=[];}
-  }
-  function list(){
-    const tbody=document.getElementById('to-tbody');
-    if(!_all.length){tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:32px">No timeout profiles yet</td></tr>';document.getElementById('to-count').textContent='';return;}
-    document.getElementById('to-count').textContent=_all.length+' profile'+(+_all.length===1?'':'s');
-    tbody.innerHTML=_all.map(t=>{
-      const badge=t.active?'<span class="bdg bdg-live">Active</span>':'<span class="bdg bdg-paused">Inactive</span>';
-      return`<tr>
-        <td><strong>${esc(t.name)}</strong></td>
-        <td>${_envLabel[t.environment]||esc(t.environment||'Default')}</td>
-        <td class="td-r">${t.total_budget_ms}</td>
-        <td class="td-r">${t.bidder_timeout_ms}</td>
-        <td class="td-r">${t.vast_timeout_ms||'—'}</td>
-        <td class="td-r">${t.no_bid_grace_ms||'—'}</td>
-        <td>${t.auto_scale?'<span style="color:var(--success);font-weight:600">&#10003; On</span>':'<span style="color:var(--muted)">Off</span>'}</td>
-        <td class="td-r">${t.auto_scale?t.premium_multiplier+'×':'—'}</td>
-        <td>${badge}</td>
-        <td><button class="btn-ic" onclick="toModule.openEdit('${t.id}')">&#9998;</button> <button class="btn-ic btn-ic-del" onclick="toModule.openDelete('${t.id}')">&#128465;</button></td>
-      </tr>`;
-    }).join('');
-  }
-  let _overrides=[];
-  function _resetForm(){
-    ['tp-name','tp-total','tp-bidder','tp-vast','tp-grace','tp-multiplier'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-    document.getElementById('tp-env').value='default';
-    document.getElementById('tp-auto').checked=false;
-    document.getElementById('tp-active').checked=true;
-    document.getElementById('toFormError').textContent='';
-    _overrides=[];_renderOverrides();onAutoChange();_editId=null;
-  }
-  function onAutoChange(){const on=document.getElementById('tp-auto').checked;const el=document.getElementById('tp-mult-grp');if(el)el.style.display=on?'':'none';}
-  function _renderOverrides(){
-    const list=document.getElementById('tp-overrides-list');if(!list)return;
-    list.innerHTML=_overrides.map((o,i)=>`<div style="display:grid;grid-template-columns:1fr 120px 28px;gap:6px;margin-bottom:6px">
-      <input type="text" placeholder="bidder name" value="${esc(o.name||'')}" onchange="toModule._setOverride(${i},'name',this.value)"/>
-      <input type="number" placeholder="ms" min="1" step="50" value="${o.ms||''}" onchange="toModule._setOverride(${i},'ms',parseInt(this.value)||0)"/>
-      <button class="btn-ic btn-ic-del" onclick="toModule._removeOverride(${i})">&#215;</button>
-    </div>`).join('');
-  }
-  function addOverride(){_overrides.push({name:'',ms:500});_renderOverrides();}
-  function _removeOverride(i){_overrides.splice(i,1);_renderOverrides();}
-  function _setOverride(i,key,val){if(_overrides[i])_overrides[i][key]=val;}
-  function openCreate(){_resetForm();document.getElementById('toModalTitle').textContent='Add Timeout Profile';document.getElementById('toModal').classList.add('open');}
-  function openEdit(id){
-    const t=_all.find(x=>x.id===id);if(!t)return;
-    _editId=id;
-    document.getElementById('toModalTitle').textContent='Edit Profile — '+t.name;
-    const s=(fld,val)=>{const el=document.getElementById(fld);if(el)el.value=val!=null?val:'';};
-    s('tp-name',t.name);document.getElementById('tp-env').value=t.environment||'default';
-    s('tp-total',t.total_budget_ms);s('tp-bidder',t.bidder_timeout_ms);
-    s('tp-vast',t.vast_timeout_ms);s('tp-grace',t.no_bid_grace_ms);
-    document.getElementById('tp-auto').checked=!!t.auto_scale;
-    s('tp-multiplier',t.premium_multiplier);
-    document.getElementById('tp-active').checked=!!t.active;
-    _overrides=t.bidder_overrides?Object.entries(t.bidder_overrides).map(([name,ms])=>({name,ms})):[];
-    document.getElementById('toFormError').textContent='';
-    onAutoChange();_renderOverrides();
-    document.getElementById('toModal').classList.add('open');
-  }
-  function closeModal(){document.getElementById('toModal').classList.remove('open');}
-  async function save(){
-    const overridesObj={};_overrides.filter(o=>o.name).forEach(o=>{overridesObj[o.name]=o.ms;});
-    const auto=document.getElementById('tp-auto').checked;
-    const payload={name:document.getElementById('tp-name').value.trim(),environment:document.getElementById('tp-env').value,total_budget_ms:parseInt(document.getElementById('tp-total').value)||0,bidder_timeout_ms:parseInt(document.getElementById('tp-bidder').value)||0,vast_timeout_ms:parseInt(document.getElementById('tp-vast').value)||0,no_bid_grace_ms:parseInt(document.getElementById('tp-grace').value)||0,auto_scale:auto,premium_multiplier:auto?parseFloat(document.getElementById('tp-multiplier').value)||1:1,bidder_overrides:Object.keys(overridesObj).length?overridesObj:null,active:document.getElementById('tp-active').checked};
-    const url=_editId?'/dashboard/timeout-profiles/'+_editId:'/dashboard/timeout-profiles';
-    const res=await fetch(url,{method:_editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const data=await res.json();
-    if(!res.ok){document.getElementById('toFormError').textContent=data.error||'Save failed';return;}
-    closeModal();await fetchAll();list();
-  }
-  function openDelete(id){
-    const t=_all.find(x=>x.id===id);if(!t)return;
-    genericConfirmObj.open('Delete profile "'+t.name+'"?',async()=>{await fetch('/dashboard/timeout-profiles/'+id,{method:'DELETE'});await fetchAll();list();});
-  }
-  return{fetchAll,list,openCreate,openEdit,closeModal,save,openDelete,addOverride,_setOverride,_removeOverride,onAutoChange};
-})();
-
-function toRender(){toModule.fetchAll().then(()=>toModule.list());}
-
-// ── Pod Optimization Rule module ──────────────────────────────────────────────
-const podModule=(()=>{
-  let _editId=null,_all=[];
-  const _goalLabel={total_yield:'Total Yield',fill_rate:'Fill Rate',vcr:'VCR',user_experience:'UX'};
-  async function fetchAll(){
-    try{const r=await fetch('/dashboard/pod-rules');const d=await r.json();_all=d.entries||[];}catch(e){_all=[];}
-  }
-  function list(){
-    const tbody=document.getElementById('pod-tbody');
-    if(!_all.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px">No pod rules yet</td></tr>';document.getElementById('pod-count').textContent='';return;}
-    document.getElementById('pod-count').textContent=_all.length+' rule'+(+_all.length===1?'':'s');
-    tbody.innerHTML=_all.map(p=>{
-      const badge=p.active?'<span class="bdg bdg-live">Active</span>':'<span class="bdg bdg-paused">Inactive</span>';
-      const fst=p.first_slot_premium?p.first_slot_premium.toFixed(2)+'×':'—';
-      const lst=p.last_slot_premium?p.last_slot_premium.toFixed(2)+'×':'—';
-      return`<tr>
-        <td><strong>${esc(p.name)}</strong></td>
-        <td class="td-r">${p.max_pod_duration_sec}s</td>
-        <td class="td-r">${p.max_slots_per_pod}</td>
-        <td class="td-r" style="color:${p.first_slot_premium>1?'var(--success)':'inherit'}">${fst}</td>
-        <td class="td-r">${lst}</td>
-        <td class="td-r">${p.min_fill_pct||0}%</td>
-        <td>${_goalLabel[p.optimize_for]||esc(p.optimize_for||'—')}</td>
-        <td>${badge}</td>
-        <td><button class="btn-ic" onclick="podModule.openEdit('${p.id}')">&#9998;</button> <button class="btn-ic btn-ic-del" onclick="podModule.openDelete('${p.id}')">&#128465;</button></td>
-      </tr>`;
-    }).join('');
-  }
-  function _resetForm(){
-    ['pr-name','pr-publisher','pr-adunit','pr-maxpod','pr-maxslots','pr-minslot','pr-maxslot',
-     'pr-first','pr-last','pr-comp-cats','pr-comp-advs','pr-minfill'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-    document.getElementById('pr-goal').value='total_yield';
-    document.getElementById('pr-active').checked=true;
-    document.getElementById('podFormError').textContent='';
-    _editId=null;
-  }
-  function openCreate(){_resetForm();document.getElementById('podModalTitle').textContent='Add Pod Rule';document.getElementById('podModal').classList.add('open');}
-  function openEdit(id){
-    const p=_all.find(x=>x.id===id);if(!p)return;
-    _editId=id;
-    document.getElementById('podModalTitle').textContent='Edit Pod Rule — '+p.name;
-    const s=(fld,val)=>{const el=document.getElementById(fld);if(el)el.value=val!=null?val:'';};
-    s('pr-name',p.name);s('pr-publisher',p.publisher_id);s('pr-adunit',p.ad_unit_id);
-    s('pr-maxpod',p.max_pod_duration_sec);s('pr-maxslots',p.max_slots_per_pod);
-    s('pr-minslot',p.min_slot_duration_sec);s('pr-maxslot',p.max_slot_duration_sec);
-    s('pr-first',p.first_slot_premium);s('pr-last',p.last_slot_premium);
-    s('pr-comp-cats',(p.comp_sep_categories||[]).join(', '));
-    s('pr-comp-advs',(p.comp_sep_advertisers||[]).join(', '));
-    document.getElementById('pr-goal').value=p.optimize_for||'total_yield';
-    s('pr-minfill',p.min_fill_pct);
-    document.getElementById('pr-active').checked=!!p.active;
-    document.getElementById('podFormError').textContent='';
-    document.getElementById('podModal').classList.add('open');
-  }
-  function closeModal(){document.getElementById('podModal').classList.remove('open');}
-  async function save(){
-    const splitTrim=v=>v.split(',').map(x=>x.trim()).filter(Boolean);
-    const payload={name:document.getElementById('pr-name').value.trim(),publisher_id:document.getElementById('pr-publisher').value.trim(),ad_unit_id:document.getElementById('pr-adunit').value.trim(),max_pod_duration_sec:parseInt(document.getElementById('pr-maxpod').value)||0,max_slots_per_pod:parseInt(document.getElementById('pr-maxslots').value)||0,min_slot_duration_sec:parseInt(document.getElementById('pr-minslot').value)||0,max_slot_duration_sec:parseInt(document.getElementById('pr-maxslot').value)||0,first_slot_premium:parseFloat(document.getElementById('pr-first').value)||0,last_slot_premium:parseFloat(document.getElementById('pr-last').value)||0,comp_sep_categories:splitTrim(document.getElementById('pr-comp-cats').value),comp_sep_advertisers:splitTrim(document.getElementById('pr-comp-advs').value),optimize_for:document.getElementById('pr-goal').value,min_fill_pct:parseFloat(document.getElementById('pr-minfill').value)||0,active:document.getElementById('pr-active').checked};
-    const url=_editId?'/dashboard/pod-rules/'+_editId:'/dashboard/pod-rules';
-    const res=await fetch(url,{method:_editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const data=await res.json();
-    if(!res.ok){document.getElementById('podFormError').textContent=data.error||'Save failed';return;}
-    closeModal();await fetchAll();list();
-  }
-  function openDelete(id){
-    const p=_all.find(x=>x.id===id);if(!p)return;
-    genericConfirmObj.open('Delete pod rule "'+p.name+'"?',async()=>{await fetch('/dashboard/pod-rules/'+id,{method:'DELETE'});await fetchAll();list();});
-  }
-  return{fetchAll,list,openCreate,openEdit,closeModal,save,openDelete};
-})();
-
-function podRender(){podModule.fetchAll().then(()=>podModule.list());}
 function toggleSidebar(){
   const s=document.getElementById('main-sidebar'),b=document.getElementById('sb-backdrop'),h=document.getElementById('mob-ham-btn');
   const open=s.classList.toggle('mob-open');
@@ -3886,14 +2214,21 @@ document.addEventListener('click',function(e){
 });
 function dashLogout(){fetch('/dashboard/logout',{method:'POST'}).finally(()=>{window.location.href='/dashboard/login';});}
 
-// Global 401 interceptor — redirect to login whenever any API call returns
-// 401 Unauthorized (session expired or invalidated server-side).
+// Global fetch wrapper: redirect 401 + surface errors via toast without breaking callers.
 (function(){
   const _origFetch=window.fetch;
   window.fetch=function(...args){
-    return _origFetch.apply(this,args).then(function(resp){
+    return _origFetch.apply(this,args).then(async function(resp){
       if(resp.status===401&&window.location.pathname!=='/dashboard/login'){
         window.location.href='/dashboard/login';
+      }
+      if(!resp.ok){
+        try{
+          const data=await resp.clone().json();
+          showToast(data?.error||data?.message||resp.statusText||'Request failed','error');
+        }catch(_){
+          showToast(resp.statusText||'Request failed','error');
+        }
       }
       return resp;
     });
@@ -3901,12 +2236,14 @@ function dashLogout(){fetch('/dashboard/logout',{method:'POST'}).finally(()=>{wi
 }());
 // Path-based section auto-navigation: serve the SPA at /dashboard/<section> URLs
 (function(){
+  const hash=(location.hash||'').replace('#','');
+  if(hash && NAV_MAP[hash]){navToPage(hash,document.getElementById(NAV_MAP[hash]));return;}
   const p=window.location.pathname;
-  if(p==='/dashboard/bidder'||p==='/dashboard/bidder/')setMainNav(document.getElementById('nav-bidders'),'bidders');
-  else if(p==='/dashboard/audience'||p==='/dashboard/audience/')navToPage('audiences',null);
-  else if(p==='/dashboard/optimization'||p==='/dashboard/optimization/')navToPage('yield',null);
-  else if(p==='/dashboard/quality'||p==='/dashboard/quality/')navToPage('bidder-scorecards',null);
-  else updateOverview(); // default: load overview data on initial page render
+  if(p==='/dashboard/bidder'||p==='/dashboard/bidder/'){setMainNav(document.getElementById('nav-bidders'),'bidders');return;}
+  if(p==='/dashboard/audience'||p==='/dashboard/audience/'){navToPage('audiences',document.getElementById('nav-audiences'));return;}
+  if(p==='/dashboard/optimization'||p==='/dashboard/optimization/'){navToPage('yield',document.getElementById('nav-yield'));return;}
+  if(p==='/dashboard/quality'||p==='/dashboard/quality/'){navToPage('bidder-scorecards',document.getElementById('nav-bsc'));return;}
+  setMainNav(document.getElementById('nav-dashboard'),'overview'); // default
 })();
 </script>
 </body>

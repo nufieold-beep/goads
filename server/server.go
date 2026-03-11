@@ -16,6 +16,8 @@ import (
 	"github.com/prebid/prebid-server/v4/logger"
 	"github.com/prebid/prebid-server/v4/metrics"
 	metricsconfig "github.com/prebid/prebid-server/v4/metrics/config"
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
 // Listen blocks forever, serving PBS requests on the given port. This will block forever, until the process is shut down.
@@ -29,29 +31,42 @@ func Listen(cfg *config.Configuration, handler http.Handler, adminHandler http.H
 	stopPrometheus := make(chan os.Signal)
 	stopChannels := []chan<- os.Signal{stopMain}
 	done := make(chan struct{})
+	useFast := os.Getenv("USE_FASTHTTP") == "1"
 
 	if cfg.UnixSocketEnable && len(cfg.UnixSocketName) > 0 { // start the unix_socket server if config enable-it.
-		var (
-			socketListener net.Listener
-			mainServer     = newSocketServer(cfg, handler)
-		)
-		go shutdownAfterSignals(mainServer, stopMain, done)
-		if socketListener, err = newUnixListener(mainServer.Addr, metrics); err != nil {
-			logger.Errorf("Error listening for Unix-Socket connections on path %s: %v for socket server", mainServer.Addr, err)
+		addr := cfg.UnixSocketName
+		var socketListener net.Listener
+		socketListener, err = newUnixListener(addr, metrics)
+		if err != nil {
+			logger.Errorf("Error listening for Unix-Socket connections on path %s: %v for socket server", addr, err)
 			return
 		}
-		go runServer(mainServer, "UnixSocket", socketListener)
+		if useFast {
+			fsrv := newFastHTTPServer(handler, cfg.Compression.Response)
+			go shutdownAfterSignalsFast(fsrv, stopMain, done)
+			go runFastHTTPServer(fsrv, "UnixSocket", socketListener)
+		} else {
+			mainServer := newSocketServer(cfg, handler)
+			go shutdownAfterSignals(mainServer, stopMain, done)
+			go runServer(mainServer, "UnixSocket", socketListener)
+		}
 	} else { // start the TCP server
-		var (
-			mainListener net.Listener
-			mainServer   = newMainServer(cfg, handler)
-		)
-		go shutdownAfterSignals(mainServer, stopMain, done)
-		if mainListener, err = newTCPListener(mainServer.Addr, metrics); err != nil {
-			logger.Errorf("Error listening for TCP connections on %s: %v for main server", mainServer.Addr, err)
+		addr := cfg.Host + ":" + strconv.Itoa(cfg.Port)
+		var mainListener net.Listener
+		mainListener, err = newTCPListener(addr, metrics)
+		if err != nil {
+			logger.Errorf("Error listening for TCP connections on %s: %v for main server", addr, err)
 			return
 		}
-		go runServer(mainServer, "Main", mainListener)
+		if useFast {
+			fsrv := newFastHTTPServer(handler, cfg.Compression.Response)
+			go shutdownAfterSignalsFast(fsrv, stopMain, done)
+			go runFastHTTPServer(fsrv, "Main", mainListener)
+		} else {
+			mainServer := newMainServer(cfg, handler)
+			go shutdownAfterSignals(mainServer, stopMain, done)
+			go runServer(mainServer, "Main", mainListener)
+		}
 	}
 
 	if cfg.Admin.Enabled {
@@ -100,13 +115,24 @@ func newMainServer(cfg *config.Configuration, handler http.Handler) *http.Server
 	return &http.Server{
 		Addr:              cfg.Host + ":" + strconv.Itoa(cfg.Port),
 		Handler:           serverHandler,
-		ReadHeaderTimeout: 3 * time.Second,  // guard against Slowloris
+		ReadHeaderTimeout: 3 * time.Second, // guard against Slowloris
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       120 * time.Second, // keep connections warm between bursts
 		MaxHeaderBytes:    1 << 16,           // 64 KB — prevents large-header amplification
 	}
 
+}
+
+func newFastHTTPServer(handler http.Handler, compressionInfo config.CompressionInfo) *fasthttp.Server {
+	wrapped := getCompressionEnabledHandler(handler, compressionInfo)
+	return &fasthttp.Server{
+		Handler:            fasthttpadaptor.NewFastHTTPHandler(wrapped),
+		ReadTimeout:        15 * time.Second,
+		WriteTimeout:       15 * time.Second,
+		IdleTimeout:        120 * time.Second,
+		MaxRequestBodySize: 10 << 20, // 10MB guard
+	}
 }
 
 func newSocketServer(cfg *config.Configuration, handler http.Handler) *http.Server {
@@ -142,6 +168,24 @@ func runServer(server *http.Server, name string, listener net.Listener) (err err
 	}
 
 	logger.Infof("%s server starting on: %s", name, server.Addr)
+	if err = server.Serve(listener); err != nil {
+		logger.Errorf("%s server quit with error: %v", name, err)
+	}
+	return
+}
+
+func runFastHTTPServer(server *fasthttp.Server, name string, listener net.Listener) (err error) {
+	if server == nil {
+		err = fmt.Errorf(">> Server is a nil_ptr.")
+		logger.Errorf("%s server quit with error: %v", name, err)
+		return
+	} else if listener == nil {
+		err = fmt.Errorf(">> Listener is a nil.")
+		logger.Errorf("%s server quit with error: %v", name, err)
+		return
+	}
+
+	logger.Infof("%s server starting on: %s", name, listener.Addr())
 	if err = server.Serve(listener); err != nil {
 		logger.Errorf("%s server quit with error: %v", name, err)
 	}
@@ -197,6 +241,14 @@ func wait(inbound <-chan os.Signal, done <-chan struct{}, outbound ...chan<- os.
 	for i := 0; i < len(outbound); i++ {
 		<-done
 	}
+}
+
+func shutdownAfterSignalsFast(server *fasthttp.Server, stopper <-chan os.Signal, done chan<- struct{}) {
+	sig := <-stopper
+	logger.Infof("Stopping fasthttp server because of signal: %s", sig.String())
+	server.Shutdown()
+	var s struct{}
+	done <- s
 }
 
 func shutdownAfterSignals(server *http.Server, stopper <-chan os.Signal, done chan<- struct{}) {

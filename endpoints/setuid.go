@@ -35,8 +35,6 @@ const (
 	chromeiOSStrLen = len(chromeiOSStr)
 )
 
-const uidCookieName = "uids"
-
 func NewSetUIDEndpoint(cfg *config.Configuration, syncersByBidder map[string]usersync.Syncer, gdprPermsBuilder gdpr.PermissionsBuilder, tcf2CfgBuilder gdpr.TCF2ConfigBuilder, analyticsRunner analytics.Runner, accountsFetcher stored_requests.AccountFetcher, metricsEngine metrics.MetricsEngine) httprouter.Handle {
 	encoder := usersync.Base64Encoder{}
 	decoder := usersync.Base64Decoder{}

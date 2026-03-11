@@ -47,6 +47,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 	_ "github.com/lib/pq"
 	"github.com/rs/cors"
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
 // NewJsonDirectoryServer is used to serve .json files from a directory as a single blob. For example,
@@ -119,6 +121,20 @@ type Router struct {
 	ParamsValidator openrtb_ext.BidderParamValidator
 
 	shutdowns []func()
+}
+
+// FastHTTPHandler adapts the existing httprouter-based router to a fasthttp
+// RequestHandler so the server can run on fasthttp without rewriting all
+// endpoint handlers.
+func (r *Router) FastHTTPHandler() fasthttp.RequestHandler {
+	return fasthttpadaptor.NewFastHTTPHandler(r)
+}
+
+// ListenAndServe starts a fasthttp server with the adapted handler. This keeps
+// the existing route definitions while switching the underlying server to the
+// faster fasthttp engine.
+func (r *Router) ListenAndServe(addr string) error {
+	return fasthttp.ListenAndServe(addr, r.FastHTTPHandler())
 }
 
 func New(cfg *config.Configuration, rateConvertor *currency.RateConverter) (r *Router, err error) {
@@ -323,22 +339,25 @@ func New(cfg *config.Configuration, rateConvertor *currency.RateConverter) (r *R
 	//   GET      /video/tracking/events  — list recorded tracking events (debug/dashboard)
 	//   GET/POST /video/adserver         — ad server config CRUD
 	videoPipeline := endpoints.NewVideoPipelineHandler(theExchange, cfg, r.MetricsEngine, "./data")
+	r.shutdowns = append(r.shutdowns, videoPipeline.Shutdown)
 	r.GET("/video/vast", videoPipeline.VASTEndpoint())
 	r.POST("/video/vast", videoPipeline.VASTEndpoint())
 	r.GET("/video/ortb", videoPipeline.ORTBEndpoint())
 	r.POST("/video/ortb", videoPipeline.ORTBEndpoint())
 	r.GET("/video/impression", videoPipeline.ImpressionEndpoint())
 	r.GET("/video/tracking", videoPipeline.TrackingEndpoint())
-	r.GET("/video/tracking/events", videoPipeline.TrackingEventsEndpoint())
-	r.GET("/video/adserver", videoPipeline.AdServerConfigEndpoint())
-	r.POST("/video/adserver", videoPipeline.AdServerConfigEndpoint())
+	r.GET("/video/tracking/events", auth(videoPipeline.TrackingEventsEndpoint()))
+	r.GET("/video/adserver", auth(videoPipeline.AdServerConfigEndpoint()))
+	r.POST("/video/adserver", auth(videoPipeline.AdServerConfigEndpoint()))
 	r.GET("/dashboard/stats/video", auth(videoPipeline.VideoStatsEndpoint()))
 	r.POST("/dashboard/stats/reset", auth(videoPipeline.ResetStatsEndpoint()))
 	r.GET("/dashboard/config", auth(videoPipeline.DashboardConfigEndpoint()))
 
-	// Wire demand-routing dependencies into the VideoExchange handler, then
-	// register all dashboard routes (auth-protected) via the central registry.
+	// Wire demand-routing dependencies into the VideoExchange handler, wire live
+	// video stats into the supply/demand partner list endpoints, then register
+	// all dashboard routes (auth-protected) via the central registry.
 	dashReg.WireVideoExchange(videoPipeline.RegisterAdServerConfig)
+	dashReg.WireVideoStats(videoPipeline.Snapshot)
 	dashReg.Register(r.Router, auth)
 
 	// Dashboard – External Statistics API proxy (admin-only, HTTPS only)

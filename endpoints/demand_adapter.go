@@ -26,6 +26,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/prebid/openrtb/v20/openrtb2"
 )
@@ -39,7 +40,7 @@ type InboundProtocol uint8
 
 const (
 	InboundVAST InboundProtocol = iota // player called GET/POST /video/vast
-	InboundORTB                         // player called GET/POST /video/ortb
+	InboundORTB                        // player called GET/POST /video/ortb
 )
 
 // DemandType identifies the protocol of the Campaign's demand endpoint.
@@ -47,8 +48,8 @@ type DemandType uint8
 
 const (
 	DemandTypePrebid DemandType = iota // no campaign — run Prebid header-bidding auction
-	DemandTypeVAST                      // campaign has a third-party VAST tag URL
-	DemandTypeORTB                      // campaign has a third-party OpenRTB endpoint
+	DemandTypeVAST                     // campaign has a third-party VAST tag URL
+	DemandTypeORTB                     // campaign has a third-party OpenRTB endpoint
 )
 
 // RouterKey pairs an inbound protocol with a demand type to select an adapter.
@@ -66,17 +67,17 @@ type RouterKey struct {
 //     (upstream fetch failed); the response should be served to the player but
 //     must NOT be counted as a monetised opportunity.
 type DemandResponse struct {
-	VASTXml    string
-	BidResp    *openrtb2.BidResponse
-	WinPrice   float64
-	NoFill     bool     // true = wrapper fallback, not a real demand fill
+	VASTXml  string
+	BidResp  *openrtb2.BidResponse
+	WinPrice float64
+	NoFill   bool // true = wrapper fallback, not a real demand fill
 	// Win details — populated when a real bid wins (NoFill=false).
-	Bidder     string
-	CrID       string
-	ADomain    []string // advertiser domains
-	AuctionID  string
-	BURL       string
-	DealID     string
+	Bidder    string
+	CrID      string
+	ADomain   []string // advertiser domains
+	AuctionID string
+	BURL      string
+	DealID    string
 }
 
 // DemandAdapter is the interface every routing adapter must satisfy.
@@ -144,15 +145,30 @@ func (a *vastToVASTAdapter) Execute(
 	pr *PlayerRequest,
 	cfg *AdServerConfig,
 ) (*DemandResponse, error) {
+	if cfg.DemandVASTURL == "" {
+		return nil, fmt.Errorf("demand VAST url is empty")
+	}
 	resolvedURL := substituteMacros(cfg.DemandVASTURL, pr, cfg)
 
 	vastXML, err := fetchVAST(ctx, a.h.demandClient, resolvedURL, pr.UA)
-	if err != nil {
-		// Fallback: return a VAST Wrapper — player chain-fetches the demand tag.
-		// NoFill=true so the endpoint does NOT count this as a monetised opportunity.
-		return &DemandResponse{VASTXml: wrapInVAST(resolvedURL), NoFill: true}, nil
+	if err != nil || strings.TrimSpace(vastXML) == "" {
+		// Serve minimal empty VAST (NoFill) on fetch failure or empty body.
+		return &DemandResponse{VASTXml: emptyVAST(), NoFill: true, WinPrice: 0}, nil
 	}
-	return &DemandResponse{VASTXml: vastXML}, nil
+	// Inject PBS impression + quartile/complete beacons so VCR and impression
+	// stats are recorded for direct VAST-tag demand (fixes broken stats on VAST path).
+	auctionID := fastGenerateID()
+	bidID := fastGenerateID()
+	reqBaseURL := cfg.RequestBaseURL
+	pbsImpURL := a.h.buildImpressionURL(reqBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
+	trackingEvts := a.h.buildTrackingEventList(reqBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
+	vastXML = injectVASTImpression(vastXML, pbsImpURL)
+	vastXML = injectVASTTracking(vastXML, trackingEvts)
+	return &DemandResponse{
+		VASTXml:   vastXML,
+		AuctionID: auctionID,
+		WinPrice:  cfg.FloorCPM, // treat VAST tag as fixed CPM defined in config
+	}, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -182,12 +198,17 @@ func (a *vastToORTBAdapter) Execute(
 	if err != nil {
 		return nil, err
 	}
+	if win == nil {
+		// No winning bid: return empty VAST so player can continue without error.
+		return &DemandResponse{VASTXml: emptyVAST(), NoFill: true, AuctionID: bidResp.ID}, nil
+	}
 	vastXML, err := a.h.buildVASTResponse(pr, cfg, win, bidder, bidResp.ID)
 	if err != nil {
 		return nil, err
 	}
 	return &DemandResponse{VASTXml: vastXML, WinPrice: win.Price, Bidder: bidder, CrID: win.CrID, ADomain: win.ADomain, AuctionID: bidResp.ID, BURL: win.BURL, DealID: win.DealID}, nil
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ortbToORTBAdapter routes an OpenRTB inbound request to an OpenRTB demand
@@ -219,8 +240,10 @@ func (a *ortbToORTBAdapter) Execute(
 		burl = win.BURL
 		dealID = win.DealID
 	}
-	return &DemandResponse{BidResp: bidResp, WinPrice: winPrice, Bidder: bidder, CrID: crid, ADomain: adom, AuctionID: bidResp.ID, BURL: burl, DealID: dealID}, nil
+	// NoFill=true when no bid won so the caller does not count this as revenue.
+	return &DemandResponse{BidResp: bidResp, WinPrice: winPrice, Bidder: bidder, CrID: crid, ADomain: adom, AuctionID: bidResp.ID, BURL: burl, DealID: dealID, NoFill: win == nil}, nil
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ortbToVASTAdapter routes an OpenRTB inbound request to a VAST demand tag.
@@ -239,12 +262,18 @@ func (a *ortbToVASTAdapter) Execute(
 	pr *PlayerRequest,
 	cfg *AdServerConfig,
 ) (*DemandResponse, error) {
+	if cfg.DemandVASTURL == "" {
+		return nil, fmt.Errorf("demand VAST url is empty")
+	}
 	resolvedURL := substituteMacros(cfg.DemandVASTURL, pr, cfg)
 	vastXML, err := fetchVAST(ctx, a.h.demandClient, resolvedURL, pr.UA)
-	if err != nil {
-		return nil, fmt.Errorf("fetch demand VAST: %w", err)
+	if err != nil || strings.TrimSpace(vastXML) == "" {
+		// Return empty VAST BidResponse; mark as NoFill.
+		emptyResp := vastXMLToBidResponseWithPrice(emptyVAST(), 0)
+		return &DemandResponse{BidResp: emptyResp, WinPrice: 0, NoFill: true}, nil
 	}
-	bidResp := vastXMLToBidResponse(vastXML, cfg)
+	bidResp := vastXMLToBidResponseWithPrice(vastXML, cfg.FloorCPM)
+	// fixed CPM from config applies to VAST-tag demand
 	return &DemandResponse{BidResp: bidResp, WinPrice: cfg.FloorCPM}, nil
 }
 
@@ -324,7 +353,8 @@ func fetchVAST(ctx context.Context, client *http.Client, vastURL string, ua stri
 		req.Header.Set("User-Agent", ua)
 	}
 	req.Header.Set("Accept", "*/*")
-	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	req.Header.Set("Connection", "keep-alive")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -338,18 +368,32 @@ func fetchVAST(ctx context.Context, client *http.Client, vastURL string, ua stri
 
 	body := io.Reader(resp.Body)
 	if resp.Header.Get("Content-Encoding") == "gzip" {
-		gr, gerr := gzip.NewReader(resp.Body)
-		if gerr != nil {
-			return "", fmt.Errorf("gzip reader: %w", gerr)
+		gr := gzipReaderPool.Get().(*gzip.Reader)
+		if gerr := gr.Reset(resp.Body); gerr != nil {
+			gzipReaderPool.Put(gr)
+			gr, gerr = gzip.NewReader(resp.Body)
+			if gerr != nil {
+				return "", fmt.Errorf("gzip reader: %w", gerr)
+			}
 		}
-		defer gr.Close()
+		defer func() {
+			_ = gr.Close()
+			gzipReaderPool.Put(gr)
+		}()
 		body = gr
 	}
 
-	limited := &io.LimitedReader{R: body, N: 1 << 20} // 1 MB cap
+	const maxSize = 1 << 20 // 1 MB
+	limited := &io.LimitedReader{R: body, N: maxSize + 1}
 	data, err := io.ReadAll(limited)
 	if err != nil {
 		return "", fmt.Errorf("read demand VAST body: %w", err)
+	}
+	if len(data) > maxSize {
+		return "", fmt.Errorf("demand VAST too large (>1MB)")
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return "", fmt.Errorf("demand VAST empty")
 	}
 
 	// XML validation: attempt to read the root token.
@@ -367,22 +411,24 @@ func fetchVAST(ctx context.Context, client *http.Client, vastURL string, ua stri
 	return string(data), nil
 }
 
-// wrapInVAST returns a minimal VAST 3.0 Wrapper whose VASTAdTagURI points at
-// tagURI.  Used as fallback when eager VAST fetch fails in vastToVASTAdapter.
-func wrapInVAST(tagURI string) string {
-	return xml.Header + `<VAST version="3.0">` + "\n" +
-		`  <Ad id="direct-demand"><Wrapper><AdSystem>AdZrvr</AdSystem>` +
-		`<VASTAdTagURI><![CDATA[` + tagURI + `]]></VASTAdTagURI>` +
-		`</Wrapper></Ad>` + "\n" +
-		`</VAST>`
+var gzipReaderPool = sync.Pool{
+	New: func() any { return new(gzip.Reader) },
 }
 
-// vastXMLToBidResponse wraps a VAST XML string into a minimal OpenRTB 2.5
+// vastXMLToBidResponseWithPrice wraps a VAST XML string into a minimal OpenRTB 2.5
 // BidResponse so that OpenRTB-native players can process it natively.
-// Used by ortbToVASTAdapter.
-func vastXMLToBidResponse(vastXML string, cfg *AdServerConfig) *openrtb2.BidResponse {
+func vastXMLToBidResponseWithPrice(vastXML string, price float64) *openrtb2.BidResponse {
 	auctionID := fastGenerateID()
 	bidID := fastGenerateID()
+	if price < 0 {
+		price = 0
+	}
+	// Only forward VAST that contains a valid Inline or Wrapper so players don't
+	// receive empty/error documents. If invalid, return an empty VAST response.
+	if err := validateVASTAdM(vastXML); err != nil {
+		vastXML = emptyVAST()
+		price = 0
+	}
 	return &openrtb2.BidResponse{
 		ID: auctionID,
 		SeatBid: []openrtb2.SeatBid{
@@ -392,29 +438,11 @@ func vastXMLToBidResponse(vastXML string, cfg *AdServerConfig) *openrtb2.BidResp
 					{
 						ID:    bidID,
 						ImpID: "1",
-						Price: cfg.FloorCPM,
+						Price: price, // use configured fixed CPM for VAST tag demand
 						AdM:   vastXML,
 					},
 				},
 			},
 		},
 	}
-}
-
-// topBidPrice returns the highest bid price across all seatbids in resp.
-// Used by ORTB-proxy adapters that need to record revenue without altering
-// the BidResponse forwarded to the player.
-func topBidPrice(resp *openrtb2.BidResponse) float64 {
-	var top float64
-	if resp == nil {
-		return 0
-	}
-	for _, sb := range resp.SeatBid {
-		for _, b := range sb.Bid {
-			if b.Price > top {
-				top = b.Price
-			}
-		}
-	}
-	return top
 }

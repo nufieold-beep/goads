@@ -40,8 +40,8 @@ import (
 	"sync"
 	"time"
 
-	adcom1 "github.com/prebid/openrtb/v20/adcom1"
 	"github.com/julienschmidt/httprouter"
+	adcom1 "github.com/prebid/openrtb/v20/adcom1"
 	"github.com/prebid/openrtb/v20/openrtb2"
 	"github.com/prebid/prebid-server/v4/config"
 	"github.com/prebid/prebid-server/v4/exchange"
@@ -59,24 +59,24 @@ import (
 // ExtraDemandCfg holds a secondary/fallback demand endpoint used in waterfall
 // when the primary demand source (DemandVASTURL / DemandOrtbURL) returns no fill.
 type ExtraDemandCfg struct {
-	VASTTagURL string  `json:"vast_tag_url,omitempty"`
-	OrtbURL    string  `json:"ortb_url,omitempty"`
-	FloorCPM   float64 `json:"floor_cpm,omitempty"`
+	VASTTagURL string   `json:"vast_tag_url,omitempty"`
+	OrtbURL    string   `json:"ortb_url,omitempty"`
+	FloorCPM   float64  `json:"floor_cpm,omitempty"`
 	BCat       []string `json:"bcat,omitempty"`
 	BAdv       []string `json:"badv,omitempty"`
 }
 
 type AdServerConfig struct {
-	PlacementID   string   `json:"placement_id"`
-	PublisherID   string   `json:"publisher_id"`
-	ContentURL    string   `json:"content_url,omitempty"`
-	DomainOrApp   string   `json:"domain_or_app,omitempty"`
-	MinDuration   int      `json:"min_duration"`
-	MaxDuration   int      `json:"max_duration"`
-	Protocols     []int    `json:"protocols,omitempty"`
-	APIs          []int    `json:"apis,omitempty"`
+	PlacementID    string   `json:"placement_id"`
+	PublisherID    string   `json:"publisher_id"`
+	ContentURL     string   `json:"content_url,omitempty"`
+	DomainOrApp    string   `json:"domain_or_app,omitempty"`
+	MinDuration    int      `json:"min_duration"`
+	MaxDuration    int      `json:"max_duration"`
+	Protocols      []int    `json:"protocols,omitempty"`
+	APIs           []int    `json:"apis,omitempty"`
 	AllowedBidders []string `json:"allowed_bidders,omitempty"`
-	FloorCPM      float64  `json:"floor_cpm,omitempty"`
+	FloorCPM       float64  `json:"floor_cpm,omitempty"`
 	// Targeting keys forwarded into OpenRTB ext.
 	TargetingExt map[string]interface{} `json:"targeting_ext,omitempty"`
 	// Direct demand routing — populated when the Ad Unit is linked to a Campaign.
@@ -97,6 +97,9 @@ type AdServerConfig struct {
 	// (e.g. "http://adzrvr.com"). Used to build self-referencing tracking URLs
 	// instead of the static external_url config value.
 	RequestBaseURL string `json:"-"`
+	// OrtbVersion sets the X-OpenRTB-Version header value on outbound ORTB
+	// requests to demand. Defaults to "2.5" when empty.
+	OrtbVersion string `json:"ortb_version,omitempty"`
 
 	// VideoPlacementType holds the ad unit's placement type string
 	// ("instream"|"outstream"|"interstitial"|"rewarded") used to set
@@ -105,6 +108,9 @@ type AdServerConfig struct {
 	// CampaignID is the dashboard campaign linked to this ad unit (informational,
 	// used for bid reporting).
 	CampaignID string `json:"-"`
+	// AdvertiserID is the dashboard advertiser owning the linked campaign.
+	// Used to route per-advertiser stats into videoStatsStore.ByAdvertiser.
+	AdvertiserID string `json:"-"`
 
 	// CampaignProtocols holds the DEMAND-SIDE protocol list from the linked
 	// Campaign config (what the campaign can deliver). This is stored
@@ -117,9 +123,11 @@ type AdServerConfig struct {
 // adServerConfigStore is a thread-safe registry of AdServerConfig keyed by PlacementID.
 // Configs are persisted to disk so placement settings survive server restarts.
 type adServerConfigStore struct {
-	mu       sync.RWMutex
-	configs  map[string]*AdServerConfig
-	filePath string
+	mu        sync.RWMutex
+	configs   map[string]*AdServerConfig
+	filePath  string
+	saveMu    sync.Mutex  // serialises disk writes so concurrent set() calls don't race
+	saveTimer *time.Timer // debounce: coalesces rapid set() bursts into a single write
 }
 
 func newAdServerConfigStore(filePath string) *adServerConfigStore {
@@ -151,11 +159,14 @@ func (s *adServerConfigStore) load() {
 	}
 }
 
-// save writes current configs to disk atomically.
+// save writes current configs to disk atomically. Serialised by saveMu so
+// concurrent calls (e.g. from the debounce timer) never race on the temp file.
 func (s *adServerConfigStore) save() {
 	if s.filePath == "" {
 		return
 	}
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
 	s.mu.RLock()
 	out := make(map[string]AdServerConfig, len(s.configs))
 	for k, v := range s.configs {
@@ -172,7 +183,7 @@ func (s *adServerConfigStore) save() {
 		return
 	}
 	tmp := s.filePath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		log.Printf("config store: write: %v", err)
 		return
 	}
@@ -181,12 +192,16 @@ func (s *adServerConfigStore) save() {
 	}
 }
 
-// set registers or replaces a config entry and persists in the background.
+// set registers or replaces a config entry and schedules a debounced persist.
+// Rapid successive calls are coalesced into a single disk write (500 ms delay).
 func (s *adServerConfigStore) set(c *AdServerConfig) {
 	s.mu.Lock()
 	s.configs[c.PlacementID] = c
+	if s.saveTimer != nil {
+		s.saveTimer.Stop()
+	}
+	s.saveTimer = time.AfterFunc(500*time.Millisecond, func() { s.save() })
 	s.mu.Unlock()
-	go s.save()
 }
 
 // get returns the config for placementID, or nil if not found.
@@ -204,13 +219,13 @@ func (s *adServerConfigStore) get(placementID string) *AdServerConfig {
 type EventType string
 
 const (
-	EventImpression   EventType = "impression"
-	EventStart        EventType = "start"
+	EventImpression    EventType = "impression"
+	EventStart         EventType = "start"
 	EventFirstQuartile EventType = "firstQuartile"
-	EventMidpoint     EventType = "midpoint"
+	EventMidpoint      EventType = "midpoint"
 	EventThirdQuartile EventType = "thirdQuartile"
-	EventComplete     EventType = "complete"
-	EventClick        EventType = "click"
+	EventComplete      EventType = "complete"
+	EventClick         EventType = "click"
 )
 
 // TrackingEvent records a single player-fired tracking beacon.
@@ -232,24 +247,28 @@ type trackingStore struct {
 	events []TrackingEvent
 }
 
+const trackingStoreMaxEvents = 100_000
+
 func (t *trackingStore) record(ev TrackingEvent) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if len(t.events) >= trackingStoreMaxEvents {
+		// Drop oldest half to amortise the shift cost.
+		half := trackingStoreMaxEvents / 2
+		copy(t.events, t.events[half:])
+		t.events = t.events[:trackingStoreMaxEvents-half]
+	}
 	t.events = append(t.events, ev)
 }
 
 func (t *trackingStore) all() []TrackingEvent {
-	// Hold the read-lock only long enough to snapshot the slice header.
-	// The actual copy happens outside the lock so readers don't block writers
-	// for the duration of a potentially large memcopy.
 	t.mu.RLock()
-	snap := t.events[:len(t.events):len(t.events)]
-	t.mu.RUnlock()
-	if len(snap) == 0 {
+	defer t.mu.RUnlock()
+	if len(t.events) == 0 {
 		return []TrackingEvent{}
 	}
-	cp := make([]TrackingEvent, len(snap))
-	copy(cp, snap)
+	cp := make([]TrackingEvent, len(t.events))
+	copy(cp, t.events)
 	return cp
 }
 
@@ -269,24 +288,85 @@ type VideoStats struct {
 
 // VideoStatsPayload is the JSON payload returned by /dashboard/stats/video.
 type VideoStatsPayload struct {
-	ByPublisher map[string]*VideoStats `json:"by_publisher"`
-	Total       VideoStats             `json:"total"`
+	ByPublisher     map[string]*VideoStats `json:"by_publisher"`
+	ByAdvertiser    map[string]*VideoStats `json:"by_advertiser"`
+	ByBidder        map[string]*VideoStats `json:"by_bidder"`
+	ByApp           map[string]*VideoStats `json:"by_app"`
+	ByPlacement     map[string]*VideoStats `json:"by_placement"`
+	ByCountry       map[string]*VideoStats `json:"by_country"`
+	ByDevice        map[string]*VideoStats `json:"by_device"`
+	ByFormat        map[string]*VideoStats `json:"by_format"`
+	ByDemandChannel map[string]*VideoStats `json:"by_demand_channel"`
+	Total           VideoStats             `json:"total"`
+	StartedAt       int64                  `json:"started_at"` // Unix timestamp of server start; used for QPS calculations
 }
 
-// videoStatsStore tracks per-publisher stats protected by a single mutex.
+// videoStatsDisk is the on-disk format (v3, backward-compatible with v2/legacy).
+// Older files with just by_pub/by_adv are detected and loaded automatically.
+type videoStatsDisk struct {
+	ByPub       map[string]VideoStats `json:"by_pub"`
+	ByAdv       map[string]VideoStats `json:"by_adv"`
+	ByBidder    map[string]VideoStats `json:"by_bidder,omitempty"`
+	ByApp       map[string]VideoStats `json:"by_app,omitempty"`
+	ByPlacement map[string]VideoStats `json:"by_placement,omitempty"`
+	ByCountry   map[string]VideoStats `json:"by_country,omitempty"`
+	ByDevice    map[string]VideoStats `json:"by_device,omitempty"`
+	ByFormat    map[string]VideoStats `json:"by_format,omitempty"`
+	ByDemandCh  map[string]VideoStats `json:"by_demand_ch,omitempty"`
+}
+
+// auctionDimKey stores dimension labels for one auction so impression/complete
+// beacons fired later can credit the right per-dimension stat buckets.
+type auctionDimKey struct {
+	Bidder    string
+	App       string
+	Placement string
+	Country   string
+	Device    string
+	Format    string
+	DemandCh  string
+	born      int64 // unix seconds — used for TTL eviction
+}
+
+// videoStatsStore tracks per-publisher, per-advertiser, and per-dimension stats
+// under a single mutex.
 type videoStatsStore struct {
-	mu       sync.Mutex
-	byPub    map[string]*VideoStats
-	filePath string
+	mu              sync.Mutex
+	byPub           map[string]*VideoStats
+	byAdvertiser    map[string]*VideoStats
+	byBidder        map[string]*VideoStats
+	byApp           map[string]*VideoStats
+	byPlacement     map[string]*VideoStats
+	byCountry       map[string]*VideoStats
+	byDevice        map[string]*VideoStats
+	byFormat        map[string]*VideoStats
+	byDemandChannel map[string]*VideoStats
+	auctionDims     map[string]*auctionDimKey // ephemeral — not persisted
+	filePath        string
+	startedAt       time.Time // set once at creation; used for QPS calculations
 }
 
 func newVideoStatsStore(filePath string) *videoStatsStore {
-	s := &videoStatsStore{byPub: make(map[string]*VideoStats), filePath: filePath}
+	s := &videoStatsStore{
+		byPub:           make(map[string]*VideoStats),
+		byAdvertiser:    make(map[string]*VideoStats),
+		byBidder:        make(map[string]*VideoStats),
+		byApp:           make(map[string]*VideoStats),
+		byPlacement:     make(map[string]*VideoStats),
+		byCountry:       make(map[string]*VideoStats),
+		byDevice:        make(map[string]*VideoStats),
+		byFormat:        make(map[string]*VideoStats),
+		byDemandChannel: make(map[string]*VideoStats),
+		auctionDims:     make(map[string]*auctionDimKey),
+		filePath:        filePath,
+		startedAt:       time.Now(),
+	}
 	s.load()
 	return s
 }
 
 // load reads previously-saved stats from disk (best effort; skips if file absent).
+// Supports v3 format (all dimension maps), v2 {by_pub,by_adv}, and legacy flat map.
 func (s *videoStatsStore) load() {
 	if s.filePath == "" {
 		return
@@ -298,39 +378,82 @@ func (s *videoStatsStore) load() {
 		}
 		return
 	}
-	var m map[string]VideoStats
-	if err := json.Unmarshal(data, &m); err != nil {
+	// Try v2/v3 disk format first.
+	var disk videoStatsDisk
+	if err := json.Unmarshal(data, &disk); err == nil && disk.ByPub != nil {
+		loadMap := func(dst map[string]*VideoStats, src map[string]VideoStats) {
+			for k, v := range src {
+				cp := v
+				dst[k] = &cp
+			}
+		}
+		loadMap(s.byPub, disk.ByPub)
+		loadMap(s.byAdvertiser, disk.ByAdv)
+		loadMap(s.byBidder, disk.ByBidder)
+		loadMap(s.byApp, disk.ByApp)
+		loadMap(s.byPlacement, disk.ByPlacement)
+		loadMap(s.byCountry, disk.ByCountry)
+		loadMap(s.byDevice, disk.ByDevice)
+		loadMap(s.byFormat, disk.ByFormat)
+		loadMap(s.byDemandChannel, disk.ByDemandCh)
+		return
+	}
+	// Fall back to legacy flat map (publisher stats only).
+	var legacy map[string]VideoStats
+	if err := json.Unmarshal(data, &legacy); err != nil {
 		log.Printf("video stats: parse: %v", err)
 		return
 	}
-	for k, v := range m {
+	for k, v := range legacy {
 		cp := v
 		s.byPub[k] = &cp
 	}
 }
 
-// save writes current stats to disk atomically.
+// save writes current stats to disk atomically (v3 format).
+// Also evicts expired entries from the in-memory auctionDims cache.
 func (s *videoStatsStore) save() {
 	if s.filePath == "" {
 		return
 	}
 	s.mu.Lock()
-	out := make(map[string]VideoStats, len(s.byPub))
-	for k, v := range s.byPub {
-		out[k] = *v
+	snapMap := func(src map[string]*VideoStats) map[string]VideoStats {
+		m := make(map[string]VideoStats, len(src))
+		for k, v := range src {
+			m[k] = *v
+		}
+		return m
+	}
+	disk := videoStatsDisk{
+		ByPub:       snapMap(s.byPub),
+		ByAdv:       snapMap(s.byAdvertiser),
+		ByBidder:    snapMap(s.byBidder),
+		ByApp:       snapMap(s.byApp),
+		ByPlacement: snapMap(s.byPlacement),
+		ByCountry:   snapMap(s.byCountry),
+		ByDevice:    snapMap(s.byDevice),
+		ByFormat:    snapMap(s.byFormat),
+		ByDemandCh:  snapMap(s.byDemandChannel),
+	}
+	// Evict auction dim cache entries older than 30 minutes.
+	cutoff := time.Now().Unix() - 30*60
+	for k, v := range s.auctionDims {
+		if v.born < cutoff {
+			delete(s.auctionDims, k)
+		}
 	}
 	s.mu.Unlock()
 	if err := os.MkdirAll(filepath.Dir(s.filePath), 0755); err != nil {
 		log.Printf("video stats: mkdir: %v", err)
 		return
 	}
-	data, err := json.Marshal(out)
+	data, err := json.Marshal(disk)
 	if err != nil {
 		log.Printf("video stats: marshal: %v", err)
 		return
 	}
 	tmp := s.filePath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		log.Printf("video stats: write: %v", err)
 		return
 	}
@@ -339,9 +462,8 @@ func (s *videoStatsStore) save() {
 	}
 }
 
-// getOrCreate returns the VideoStats entry for pubID under the lock.
-// Callers that need to increment must hold the lock themselves to avoid
-// a double lock-unlock round-trip (get then re-lock).
+// getOrCreate returns (or creates) the VideoStats entry for pubID.
+// Must be called while holding s.mu.
 func (s *videoStatsStore) getOrCreate(pubID string) *VideoStats {
 	v := s.byPub[pubID]
 	if v == nil {
@@ -349,6 +471,188 @@ func (s *videoStatsStore) getOrCreate(pubID string) *VideoStats {
 		s.byPub[pubID] = v
 	}
 	return v
+}
+
+// getOrCreateAdv returns (or creates) the VideoStats entry for advID.
+// Must be called while holding s.mu.
+func (s *videoStatsStore) getOrCreateAdv(advID string) *VideoStats {
+	v := s.byAdvertiser[advID]
+	if v == nil {
+		v = &VideoStats{}
+		s.byAdvertiser[advID] = v
+	}
+	return v
+}
+
+// getOrCreateDim returns (or creates) the VideoStats entry for key in m.
+// Must be called while holding s.mu.
+func getOrCreateDim(m map[string]*VideoStats, key string) *VideoStats {
+	v := m[key]
+	if v == nil {
+		v = &VideoStats{}
+		m[key] = v
+	}
+	return v
+}
+
+// deviceTypeLabel maps an IAB OpenRTB device-type integer to a readable label.
+func deviceTypeLabel(dt int) string {
+	switch dt {
+	case 1:
+		return "Mobile/Tablet"
+	case 2:
+		return "Desktop"
+	case 3:
+		return "CTV"
+	case 4:
+		return "Phone"
+	case 5:
+		return "Tablet"
+	case 6:
+		return "Connected Device"
+	case 7:
+		return "Set-Top Box"
+	default:
+		return "Unknown"
+	}
+}
+
+// demandChannelLabel maps a DemandType to a human-readable channel name.
+func demandChannelLabel(dt DemandType) string {
+	switch dt {
+	case DemandTypeVAST:
+		return "VAST Tag"
+	case DemandTypeORTB:
+		return "OpenRTB"
+	case DemandTypePrebid:
+		return "Prebid"
+	default:
+		return "Unknown"
+	}
+}
+
+// incDimFill credits all 7 programmatic dimension buckets for one fill event
+// and caches the auction's dimension keys for later impression/complete attribution.
+func (s *videoStatsStore) incDimFill(cfg *AdServerConfig, pr *PlayerRequest, resp *DemandResponse, demandType DemandType) {
+	if resp == nil || resp.AuctionID == "" {
+		return
+	}
+	bidder := resp.Bidder
+	if bidder == "" {
+		bidder = "Unknown"
+	}
+	app := pr.AppBundle
+	if app == "" {
+		app = pr.Domain
+	}
+	if app == "" {
+		app = "(unknown)"
+	}
+	placement := cfg.PlacementID
+	if placement == "" {
+		placement = "(unknown)"
+	}
+	country := pr.CountryCode
+	if country == "" {
+		country = "(unknown)"
+	}
+	device := deviceTypeLabel(pr.DeviceType)
+	format := cfg.VideoPlacementType
+	if format == "" {
+		format = "(unknown)"
+	}
+	demandCh := demandChannelLabel(demandType)
+	price := resp.WinPrice / 1000 // CPM → USD per impression
+	s.mu.Lock()
+	incD := func(m map[string]*VideoStats, key string) {
+		v := getOrCreateDim(m, key)
+		v.Opportunities++
+		v.Revenue += price
+	}
+	incD(s.byBidder, bidder)
+	incD(s.byApp, app)
+	incD(s.byPlacement, placement)
+	incD(s.byCountry, country)
+	incD(s.byDevice, device)
+	incD(s.byFormat, format)
+	incD(s.byDemandChannel, demandCh)
+	s.auctionDims[resp.AuctionID] = &auctionDimKey{
+		Bidder:    bidder,
+		App:       app,
+		Placement: placement,
+		Country:   country,
+		Device:    device,
+		Format:    format,
+		DemandCh:  demandCh,
+		born:      time.Now().Unix(),
+	}
+	s.mu.Unlock()
+}
+
+// incDimImpression credits all 7 dimension buckets for the given auctionID's impression.
+func (s *videoStatsStore) incDimImpression(auctionID string) {
+	if auctionID == "" {
+		return
+	}
+	s.mu.Lock()
+	dk := s.auctionDims[auctionID]
+	if dk != nil {
+		if v := s.byBidder[dk.Bidder]; v != nil {
+			v.Impressions++
+		}
+		if v := s.byApp[dk.App]; v != nil {
+			v.Impressions++
+		}
+		if v := s.byPlacement[dk.Placement]; v != nil {
+			v.Impressions++
+		}
+		if v := s.byCountry[dk.Country]; v != nil {
+			v.Impressions++
+		}
+		if v := s.byDevice[dk.Device]; v != nil {
+			v.Impressions++
+		}
+		if v := s.byFormat[dk.Format]; v != nil {
+			v.Impressions++
+		}
+		if v := s.byDemandChannel[dk.DemandCh]; v != nil {
+			v.Impressions++
+		}
+	}
+	s.mu.Unlock()
+}
+
+// incDimComplete credits all 7 dimension buckets for the given auctionID's complete.
+func (s *videoStatsStore) incDimComplete(auctionID string) {
+	if auctionID == "" {
+		return
+	}
+	s.mu.Lock()
+	dk := s.auctionDims[auctionID]
+	if dk != nil {
+		if v := s.byBidder[dk.Bidder]; v != nil {
+			v.Completes++
+		}
+		if v := s.byApp[dk.App]; v != nil {
+			v.Completes++
+		}
+		if v := s.byPlacement[dk.Placement]; v != nil {
+			v.Completes++
+		}
+		if v := s.byCountry[dk.Country]; v != nil {
+			v.Completes++
+		}
+		if v := s.byDevice[dk.Device]; v != nil {
+			v.Completes++
+		}
+		if v := s.byFormat[dk.Format]; v != nil {
+			v.Completes++
+		}
+		if v := s.byDemandChannel[dk.DemandCh]; v != nil {
+			v.Completes++
+		}
+	}
+	s.mu.Unlock()
 }
 
 func (s *videoStatsStore) incRequest(pubID string) {
@@ -371,6 +675,26 @@ func (s *videoStatsStore) incFill(pubID string, price float64) {
 	s.mu.Unlock()
 }
 
+func (s *videoStatsStore) incAdvertiserRequest(advID string) {
+	if advID == "" {
+		return
+	}
+	s.mu.Lock()
+	s.getOrCreateAdv(advID).AdRequests++
+	s.mu.Unlock()
+}
+
+func (s *videoStatsStore) incAdvertiserFill(advID string, price float64) {
+	if advID == "" {
+		return
+	}
+	s.mu.Lock()
+	v := s.getOrCreateAdv(advID)
+	v.Opportunities++
+	v.Revenue += price / 1000
+	s.mu.Unlock()
+}
+
 // incImpression is called when the player fires the client-side
 // event=impression beacon, confirming the ad was rendered.
 func (s *videoStatsStore) incImpression(pubID string) {
@@ -379,6 +703,15 @@ func (s *videoStatsStore) incImpression(pubID string) {
 	}
 	s.mu.Lock()
 	s.getOrCreate(pubID).Impressions++
+	s.mu.Unlock()
+}
+
+func (s *videoStatsStore) incAdvertiserImpression(advID string) {
+	if advID == "" {
+		return
+	}
+	s.mu.Lock()
+	s.getOrCreateAdv(advID).Impressions++
 	s.mu.Unlock()
 }
 
@@ -391,10 +724,40 @@ func (s *videoStatsStore) incComplete(pubID string) {
 	s.mu.Unlock()
 }
 
+func (s *videoStatsStore) incAdvertiserComplete(advID string) {
+	if advID == "" {
+		return
+	}
+	s.mu.Lock()
+	s.getOrCreateAdv(advID).Completes++
+	s.mu.Unlock()
+}
+
 func (s *videoStatsStore) snapshot() VideoStatsPayload {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := VideoStatsPayload{ByPublisher: make(map[string]*VideoStats, len(s.byPub))}
+	snapDim := func(src map[string]*VideoStats) map[string]*VideoStats {
+		out := make(map[string]*VideoStats, len(src))
+		for k, v := range src {
+			cp := *v
+			if cp.Impressions > 0 {
+				cp.VCR = float64(cp.Completes) / float64(cp.Impressions) * 100
+			}
+			out[k] = &cp
+		}
+		return out
+	}
+	out := VideoStatsPayload{
+		ByPublisher:     make(map[string]*VideoStats, len(s.byPub)),
+		ByAdvertiser:    make(map[string]*VideoStats, len(s.byAdvertiser)),
+		ByBidder:        snapDim(s.byBidder),
+		ByApp:           snapDim(s.byApp),
+		ByPlacement:     snapDim(s.byPlacement),
+		ByCountry:       snapDim(s.byCountry),
+		ByDevice:        snapDim(s.byDevice),
+		ByFormat:        snapDim(s.byFormat),
+		ByDemandChannel: snapDim(s.byDemandChannel),
+	}
 	for k, v := range s.byPub {
 		cp := *v
 		if cp.Impressions > 0 {
@@ -407,17 +770,33 @@ func (s *videoStatsStore) snapshot() VideoStatsPayload {
 		out.Total.Completes += cp.Completes
 		out.Total.Revenue += cp.Revenue
 	}
+	for k, v := range s.byAdvertiser {
+		cp := *v
+		if cp.Impressions > 0 {
+			cp.VCR = float64(cp.Completes) / float64(cp.Impressions) * 100
+		}
+		out.ByAdvertiser[k] = &cp
+	}
 	if out.Total.Impressions > 0 {
 		out.Total.VCR = float64(out.Total.Completes) / float64(out.Total.Impressions) * 100
 	}
+	out.StartedAt = s.startedAt.Unix()
 	return out
 }
 
-// reset clears all per-publisher stats from memory and removes the on-disk
-// persistence file so the next save() starts clean.
+// reset clears all stats from memory and removes the on-disk persistence file.
 func (s *videoStatsStore) reset() {
 	s.mu.Lock()
 	s.byPub = make(map[string]*VideoStats)
+	s.byAdvertiser = make(map[string]*VideoStats)
+	s.byBidder = make(map[string]*VideoStats)
+	s.byApp = make(map[string]*VideoStats)
+	s.byPlacement = make(map[string]*VideoStats)
+	s.byCountry = make(map[string]*VideoStats)
+	s.byDevice = make(map[string]*VideoStats)
+	s.byFormat = make(map[string]*VideoStats)
+	s.byDemandChannel = make(map[string]*VideoStats)
+	s.auctionDims = make(map[string]*auctionDimKey)
 	s.mu.Unlock()
 	if s.filePath != "" {
 		_ = os.Remove(s.filePath)
@@ -431,9 +810,9 @@ func (s *videoStatsStore) reset() {
 
 // vastRoot is the top-level VAST document.
 type vastRoot struct {
-	XMLName xml.Name  `xml:"VAST"`
-	Version string    `xml:"version,attr"`
-	Ad      []vastAd  `xml:"Ad"`
+	XMLName xml.Name `xml:"VAST"`
+	Version string   `xml:"version,attr"`
+	Ad      []vastAd `xml:"Ad"`
 }
 
 // vastAd represents one <Ad> element.
@@ -445,17 +824,17 @@ type vastAd struct {
 
 // vastInline carries the actual creative.
 type vastInline struct {
-	AdSystem    string           `xml:"AdSystem"`
-	AdTitle     string           `xml:"AdTitle"`
-	Impression  []vastImpression `xml:"Impression"`
-	Creatives   vastCreatives    `xml:"Creatives"`
+	AdSystem   string           `xml:"AdSystem"`
+	AdTitle    string           `xml:"AdTitle"`
+	Impression []vastImpression `xml:"Impression"`
+	Creatives  vastCreatives    `xml:"Creatives"`
 }
 
 // vastWrapper wraps an upstream VAST URI.
 type vastWrapper struct {
-	AdSystem       string              `xml:"AdSystem"`
-	VASTAdTagURI   vastCDATA           `xml:"VASTAdTagURI"`
-	Impression     []vastImpression    `xml:"Impression"`
+	AdSystem     string           `xml:"AdSystem"`
+	VASTAdTagURI vastCDATA        `xml:"VASTAdTagURI"`
+	Impression   []vastImpression `xml:"Impression"`
 	// TrackingEvents allows BURL and other server-side trackers to be fired
 	// from a Wrapper without waiting for the chained InLine to load.
 	TrackingEvents *vastTrackingEvents `xml:"TrackingEvents,omitempty"`
@@ -471,8 +850,8 @@ type vastCreatives struct {
 }
 
 type vastCreative struct {
-	ID     string        `xml:"id,attr,omitempty"`
-	Linear *vastLinear   `xml:"Linear,omitempty"`
+	ID     string      `xml:"id,attr,omitempty"`
+	Linear *vastLinear `xml:"Linear,omitempty"`
 }
 
 type vastLinear struct {
@@ -521,14 +900,14 @@ type vastCDATA struct {
 
 // VideoPipelineHandler orchestrates all 7 pipeline stages.
 type VideoPipelineHandler struct {
-	exchange     exchange.Exchange
-	cfg          *config.Configuration
-	metricsEng   metrics.MetricsEngine
-	configStore  *adServerConfigStore
-	tracking     *trackingStore
-	videoStats   *videoStatsStore
-	bidReport    *BidReportHandler
-	externalURL  string
+	exchange    exchange.Exchange
+	cfg         *config.Configuration
+	metricsEng  metrics.MetricsEngine
+	configStore *adServerConfigStore
+	tracking    *trackingStore
+	videoStats  *videoStatsStore
+	bidReport   *BidReportHandler
+	externalURL string
 	// demandClient is a shared, pool-backed HTTP client for all outbound calls
 	// to demand partners. Tuned for high QPS: 256 keepalive conns per host,
 	// 1 s dial timeout, HTTP/2 enabled.
@@ -536,6 +915,8 @@ type VideoPipelineHandler struct {
 	// bufPool reuses byte buffers across requests to eliminate per-request
 	// heap allocations for VAST XML and JSON response serialization.
 	bufPool sync.Pool
+	// done is closed by Shutdown to stop background goroutines (stats persistence).
+	done chan struct{}
 }
 
 // NewVideoPipelineHandler constructs the handler and returns HTTP handles for
@@ -583,18 +964,36 @@ func NewVideoPipelineHandler(
 				TLSClientConfig:       &tls.Config{InsecureSkipVerify: os.Getenv("PBS_INSECURE_TLS") == "1"}, //nolint:gosec
 			},
 		},
+		done: make(chan struct{}),
 	}
-	// Persist stats to disk every 30 seconds.
+	// Persist stats to disk every 30 seconds; stops on Shutdown.
 	if statsFile != "" {
 		go func() {
 			t := time.NewTicker(30 * time.Second)
 			defer t.Stop()
-			for range t.C {
-				vs.save()
+			for {
+				select {
+				case <-t.C:
+					vs.save()
+				case <-h.done:
+					vs.save() // flush on shutdown
+					return
+				}
 			}
 		}()
 	}
 	return h
+}
+
+// Shutdown stops background goroutines and flushes pending data to disk.
+// Safe to call multiple times.
+func (h *VideoPipelineHandler) Shutdown() {
+	select {
+	case <-h.done:
+		// already closed
+	default:
+		close(h.done)
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -606,7 +1005,8 @@ func NewVideoPipelineHandler(
 // (or a JSON body for POST requests).
 //
 // Route: GET  /video/vast
-//        POST /video/vast
+//
+//	POST /video/vast
 func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		start := time.Now()
@@ -617,7 +1017,8 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 		req, err := h.parsePlayerRequest(r)
 		if err != nil {
 			h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusBadInput})
-			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			log.Printf("VASTEndpoint parsePlayerRequest: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 
@@ -625,7 +1026,7 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 		adsCfg, err := h.resolveAdServerConfig(req.PlacementID)
 		if err != nil {
 			h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusBadInput})
-			http.Error(w, "unknown placement: "+err.Error(), http.StatusNotFound)
+			http.Error(w, "placement not found", http.StatusNotFound)
 			return
 		}
 		// Stamp the request's base URL so tracking pixels refer back to the
@@ -639,6 +1040,7 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 		// all four schemas: VAST→VAST, VAST→ORTB and Prebid fallback.
 		adapter := h.adapterRouter(RouterKey{InboundVAST, resolveDemandType(adsCfg)})
 		h.videoStats.incRequest(adsCfg.PublisherID)
+		h.videoStats.incAdvertiserRequest(adsCfg.AdvertiserID)
 		resp, err := adapter.Execute(ctx, req, adsCfg)
 		if err != nil && resolveDemandType(adsCfg) != DemandTypeVAST {
 			// Waterfall: try extra demand sources in order before returning no-fill.
@@ -669,7 +1071,7 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 			// Fire TV, Samsung, etc.) can gracefully skip the ad slot.
 			h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
 			h.metricsEng.RecordRequestTime(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusOK}, time.Since(start))
-			h.writeVASTResponse(w, emptyVAST)
+			h.writeVASTResponse(w, emptyVAST())
 			return
 		}
 
@@ -677,12 +1079,19 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 		// creative (not a passthrough wrapper fallback from vastToVASTAdapter).
 		if !resp.NoFill {
 			h.videoStats.incFill(adsCfg.PublisherID, resp.WinPrice)
+			h.videoStats.incAdvertiserFill(adsCfg.AdvertiserID, resp.WinPrice)
+			h.videoStats.incDimFill(adsCfg, req, resp, resolveDemandType(adsCfg))
+			// Count impression at VAST-serve time (server-side CTV/OTT model).
+			// Player-level beacon (/video/impression) still fires for audit, but
+			// the primary impression credit happens here so publishers see non-zero
+			// impressions even when the player does not fire the pixel.
+			h.videoStats.incImpression(adsCfg.PublisherID)
+			h.videoStats.incAdvertiserImpression(adsCfg.AdvertiserID)
+			h.videoStats.incDimImpression(resp.AuctionID)
+			h.metricsEng.RecordImps(metrics.ImpLabels{VideoImps: true})
 			h.recordBidReport(adsCfg, req, resp, "win")
 		}
 		h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
-		// NOTE: RecordImps is intentionally NOT called here.
-		// Impressions are only counted when the player fires the /video/tracking
-		// beacon with event=impression (client-confirmed render, not server-serve).
 		h.metricsEng.RecordRequestTime(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusOK}, time.Since(start))
 
 		// ── Stage 6: return VAST to player ───────────────────────────────
@@ -702,7 +1111,8 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 // schema runs: ORTB→ORTB, ORTB→VAST, or the Prebid fallback.
 //
 // Route: GET  /video/ortb
-//        POST /video/ortb
+//
+//	POST /video/ortb
 func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		start := time.Now()
@@ -713,7 +1123,8 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 		req, err := h.parsePlayerRequest(r)
 		if err != nil {
 			h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusBadInput})
-			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			log.Printf("ORTBEndpoint parsePlayerRequest: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 
@@ -721,7 +1132,7 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 		adsCfg, err := h.resolveAdServerConfig(req.PlacementID)
 		if err != nil {
 			h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusBadInput})
-			http.Error(w, "unknown placement: "+err.Error(), http.StatusNotFound)
+			http.Error(w, "placement not found", http.StatusNotFound)
 			return
 		}
 		cfgCopy := *adsCfg
@@ -733,6 +1144,7 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 		// ORTB→ORTB, ORTB→VAST and Prebid fallback schemas.
 		adapter := h.adapterRouter(RouterKey{InboundORTB, resolveDemandType(adsCfg)})
 		h.videoStats.incRequest(adsCfg.PublisherID)
+		h.videoStats.incAdvertiserRequest(adsCfg.AdvertiserID)
 		resp, err := adapter.Execute(ctx, req, adsCfg)
 		if err != nil && resolveDemandType(adsCfg) != DemandTypeVAST {
 			// Waterfall: try extra demand sources in order before returning no-fill.
@@ -766,14 +1178,56 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 			return
 		}
 
+		// Resolve and fire NURL/BURL for the winning bid on server side so that
+		// auction macros are applied and the client never double-fires win notices.
+		if !resp.NoFill && resp.BidResp != nil {
+			if win, bidder, werr := h.extractWinningBid(resp.BidResp, adsCfg); werr == nil && win != nil {
+				auctionID := resp.AuctionID
+				if auctionID == "" && resp.BidResp != nil {
+					auctionID = resp.BidResp.ID
+				}
+				// Resolve macros once.
+				resolvedNURL := resolveAuctionMacros(win.NURL, win, auctionID, bidder)
+				resolvedBURL := resolveAuctionMacros(win.BURL, win, auctionID, bidder)
+
+				// Fire NURL server-side (spec requires the exchange to do this).
+				if resolvedNURL != "" {
+					h.fireWinNotice(resolvedNURL)
+				}
+
+				// Update winning bid with resolved BURL and clear NURL to prevent client fire.
+				for si := range resp.BidResp.SeatBid {
+					sb := &resp.BidResp.SeatBid[si]
+					for bi := range sb.Bid {
+						b := &sb.Bid[bi]
+						if isEmptyAdM(b.AdM) {
+							b.AdM = ""
+						}
+						if b.ID == win.BidID && (bidder == "" || sb.Seat == bidder) {
+							if resolvedBURL != "" {
+								b.BURL = resolvedBURL
+								resp.BURL = resolvedBURL
+							}
+							// Remove NURL so downstream players cannot double-count.
+							b.NURL = ""
+						}
+					}
+				}
+			}
+		}
+
 		if !resp.NoFill {
 			h.videoStats.incFill(adsCfg.PublisherID, resp.WinPrice)
+			h.videoStats.incAdvertiserFill(adsCfg.AdvertiserID, resp.WinPrice)
+			h.videoStats.incDimFill(adsCfg, req, resp, resolveDemandType(adsCfg))
+			// Count impression at bid-serve time (server-side CTV/OTT model).
+			h.videoStats.incImpression(adsCfg.PublisherID)
+			h.videoStats.incAdvertiserImpression(adsCfg.AdvertiserID)
+			h.videoStats.incDimImpression(resp.AuctionID)
+			h.metricsEng.RecordImps(metrics.ImpLabels{VideoImps: true})
 			h.recordBidReport(adsCfg, req, resp, "win")
 		}
 		h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
-		// NOTE: RecordImps is intentionally NOT called here.
-		// Impressions are only counted when the player fires the /video/tracking
-		// beacon with event=impression (client-confirmed render, not server-serve).
 		h.metricsEng.RecordRequestTime(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusOK}, time.Since(start))
 
 		// ── Stage 6: return BidResponse to player ────────────────────────
@@ -816,45 +1270,46 @@ type PlayerRequest struct {
 
 	// Device signals — forwarded into the OpenRTB Device object and used for
 	// macro substitution in demand VAST tag URLs.
-	IP          string `json:"ip,omitempty"`           // client IP (overrides auto-detect)
-	UA          string `json:"ua,omitempty"`           // user-agent (overrides header)
+	IP          string `json:"ip,omitempty"` // client IP (overrides auto-detect)
+	IPv6        string `json:"ip6,omitempty"`
+	UA          string `json:"ua,omitempty"` // user-agent (overrides header)
 	AppName     string `json:"app_name,omitempty"`
 	AppStoreURL string `json:"app_store_url,omitempty"`
 	DeviceMake  string `json:"device_make,omitempty"`
 	DeviceModel string `json:"device_model,omitempty"`
 	// DeviceType is the IAB OpenRTB device-type integer:
 	// 1=mobile/tablet, 2=PC, 3=CTV, 4=phone, 5=tablet, 6=connected device, 7=set-top box.
-	DeviceType  int    `json:"device_type,omitempty"`
-	DeviceOS    string `json:"os,omitempty"`
-	OSVersion   string `json:"osv,omitempty"`          // device OS version (e.g. "11")
-	IFA         string `json:"ifa,omitempty"`          // IDFA (iOS) or GAID (Android)
-	IFAType     string `json:"ifa_type,omitempty"`     // "aaid", "idfa", "ppid", etc.
-	LMT         int8   `json:"lmt,omitempty"`          // Limit Ad Tracking: 0=unrestricted, 1=limited
-	Language    string `json:"language,omitempty"`     // device language ISO-639-1
-	CountryCode string `json:"country_code,omitempty"`
-	DNT         int8   `json:"dnt,omitempty"`
+	DeviceType    int    `json:"device_type,omitempty"`
+	DeviceOS      string `json:"os,omitempty"`
+	OSVersion     string `json:"osv,omitempty"`      // device OS version (e.g. "11")
+	IFA           string `json:"ifa,omitempty"`      // IDFA (iOS) or GAID (Android)
+	IFAType       string `json:"ifa_type,omitempty"` // "aaid", "idfa", "ppid", etc.
+	LMT           int8   `json:"lmt,omitempty"`      // Limit Ad Tracking: 0=unrestricted, 1=limited
+	Language      string `json:"language,omitempty"` // device language ISO-639-1
+	CountryCode   string `json:"country_code,omitempty"`
+	DNT           int8   `json:"dnt,omitempty"`
 	ContentGenre  string `json:"ct_genre,omitempty"`
 	ContentLang   string `json:"ct_lang,omitempty"`
-	ContentRating string `json:"ct_rating,omitempty"`   // content rating (e.g. "TV-PG")
+	ContentRating string `json:"ct_rating,omitempty"`     // content rating (e.g. "TV-PG")
 	LiveStream    int8   `json:"ct_livestream,omitempty"` // 1=live, 0=on-demand
-	ContentLen    int64  `json:"ct_len,omitempty"`       // content duration in seconds
-	ContentTitle  string `json:"ct_title,omitempty"`     // episode/video title
-	ContentSeries string `json:"ct_series,omitempty"`    // show/series name (CTV)
-	ContentSeason string `json:"ct_season,omitempty"`    // season identifier (e.g. "2")
-	ContentURL    string `json:"ct_url,omitempty"`       // canonical content URL
-	ContentCat    string `json:"ct_cat,omitempty"`       // comma-sep IAB content categories
-	ContentProdQ  int    `json:"ct_prodq,omitempty"`     // IAB production quality: 0=unknown,1=professionally produced,2=prosumer,3=UGC
-	SiteName      string `json:"site_name,omitempty"`    // human-readable site/app name
-	SiteCat       string `json:"site_cat,omitempty"`     // comma-sep IAB content categories for site/app
+	ContentLen    int64  `json:"ct_len,omitempty"`        // content duration in seconds
+	ContentTitle  string `json:"ct_title,omitempty"`      // episode/video title
+	ContentSeries string `json:"ct_series,omitempty"`     // show/series name (CTV)
+	ContentSeason string `json:"ct_season,omitempty"`     // season identifier (e.g. "2")
+	ContentURL    string `json:"ct_url,omitempty"`        // canonical content URL
+	ContentCat    string `json:"ct_cat,omitempty"`        // comma-sep IAB content categories
+	ContentProdQ  int    `json:"ct_prodq,omitempty"`      // IAB production quality: 0=unknown,1=professionally produced,2=prosumer,3=UGC
+	SiteName      string `json:"site_name,omitempty"`     // human-readable site/app name
+	SiteCat       string `json:"site_cat,omitempty"`      // comma-sep IAB content categories for site/app
 	SiteKeywords  string `json:"site_keywords,omitempty"` // comma-sep keywords for site/app
-	PageRef       string `json:"page_ref,omitempty"`     // referring URL (retargeting signal)
-	AppVer        string `json:"app_ver,omitempty"`      // app version string
+	PageRef       string `json:"page_ref,omitempty"`      // referring URL (retargeting signal)
+	AppVer        string `json:"app_ver,omitempty"`       // app version string
 	// App context
 	AppID string `json:"app_id,omitempty"` // app.id for app-traffic requests
 	// Video impression controls
-	Skip       int8  `json:"skip,omitempty"`        // 0=non-skippable (default), 1=skippable
-	StartDelay int   `json:"start_delay,omitempty"` // 0=pre-roll (default), -1=mid-roll, -2=post-roll
-	Secure     int8  `json:"secure,omitempty"`      // 0=HTTP (default), 1=HTTPS
+	Skip       int8 `json:"skip,omitempty"`        // 0=non-skippable (default), 1=skippable
+	StartDelay int  `json:"start_delay,omitempty"` // 0=pre-roll (default), -1=mid-roll, -2=post-roll
+	Secure     int8 `json:"secure,omitempty"`      // 0=HTTP (default), 1=HTTPS
 	// Request-level controls
 	TMax int64  `json:"tmax,omitempty"` // auction timeout ms; default 500
 	BCat string `json:"bcat,omitempty"` // comma-separated blocked IAB categories
@@ -946,6 +1401,9 @@ func (h *VideoPipelineHandler) parsePlayerRequest(r *http.Request) (*PlayerReque
 	if v := q.Get("ip"); v != "" {
 		pr.IP = v
 	}
+	if v := q.Get("ip6"); v != "" {
+		pr.IPv6 = v
+	}
 	if v := q.Get("ua"); v != "" {
 		pr.UA = v
 	}
@@ -974,6 +1432,9 @@ func (h *VideoPipelineHandler) parsePlayerRequest(r *http.Request) (*PlayerReque
 	}
 	if v := q.Get("ifa"); v != "" {
 		pr.IFA = v
+	}
+	if v := q.Get("ifa_type"); v != "" {
+		pr.IFAType = v
 	}
 	if v := q.Get("country_code"); v != "" {
 		pr.CountryCode = v
@@ -1015,9 +1476,6 @@ func (h *VideoPipelineHandler) parsePlayerRequest(r *http.Request) (*PlayerReque
 	}
 	if v := q.Get("language"); v != "" {
 		pr.Language = v
-	}
-	if v := q.Get("ifa_type"); v != "" {
-		pr.IFAType = v
 	}
 	if v := q.Get("user_id"); v != "" {
 		pr.UserID = v
@@ -1079,6 +1537,29 @@ func (h *VideoPipelineHandler) parsePlayerRequest(r *http.Request) (*PlayerReque
 			pr.TMax = n
 		}
 	}
+
+	// Auto-detect client IPs when not explicitly provided.
+	if pr.IP == "" || pr.IPv6 == "" {
+		if xfwd := r.Header.Get("X-Forwarded-For"); xfwd != "" {
+			ip := strings.TrimSpace(strings.Split(xfwd, ",")[0])
+			if pr.IP == "" {
+				pr.IP = ip
+			}
+			if pr.IPv6 == "" && strings.Contains(ip, ":") {
+				pr.IPv6 = ip
+			}
+		} else if rip, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			if pr.IP == "" {
+				pr.IP = rip
+			}
+			if pr.IPv6 == "" && strings.Contains(rip, ":") {
+				pr.IPv6 = rip
+			}
+		}
+	}
+	if pr.IP == "" && pr.IPv6 != "" {
+		pr.IP = pr.IPv6
+	}
 	if v := q.Get("bcat"); v != "" {
 		pr.BCat = v
 	}
@@ -1135,7 +1616,7 @@ func (h *VideoPipelineHandler) resolveAdServerConfig(placementID string) (*AdSer
 		MinDuration: 5,
 		MaxDuration: 30,
 		Protocols:   []int{2, 3, 5, 6, 7, 8}, // VAST 2.0, 3.0, 2.0W, 3.0W, 4.0, 4.0W
-		APIs:        []int{1, 2, 7},           // VPAID 1.0, VPAID 2.0, OMID 1.0
+		APIs:        []int{1, 2, 7},          // VPAID 1.0, VPAID 2.0, OMID 1.0
 	}, nil
 }
 
@@ -1147,7 +1628,8 @@ func (h *VideoPipelineHandler) RegisterAdServerConfig(cfg *AdServerConfig) {
 
 // detectIFAType infers the IAB ifa_type string from OS, make, model, and UA.
 // Priority: iOS/tvOS → Roku → Samsung (Tizen) → Amazon FireTV → LG →
-//           Vizio → Xiaomi (Mi Box/TV) → Sony Bravia → Android → dpid.
+//
+//	Vizio → Xiaomi (Mi Box/TV) → Sony Bravia → Android → dpid.
 func detectIFAType(osStr, make, model, ua string) string {
 	osL := strings.ToLower(osStr)
 	makeL := strings.ToLower(make)
@@ -1332,31 +1814,35 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 	}
 
 	// ── Video control flags ───────────────────────────────────────────────
-	skipVal := pr.Skip                          // 0=non-skippable (default)
+	skipVal := pr.Skip                             // 0=non-skippable (default)
 	startDelay := adcom1.StartDelay(pr.StartDelay) // 0=pre-roll (default)
 	boxingVal := int8(1)
 	seqVal := int8(1)
 
 	// ── Imp.Secure: from publisher; auto-detected in parsePlayerRequest ───
 	secureVal := pr.Secure
+	if secureVal == 0 {
+		secureVal = 1 // default to HTTPS if publisher omitted
+	}
 
-imp := openrtb2.Imp{
+	bidFloor := adsCfg.FloorCPM
+	imp := openrtb2.Imp{
 		ID:          impID,
 		TagID:       adsCfg.PlacementID,
-		BidFloor:    adsCfg.FloorCPM,
+		BidFloor:    bidFloor,
 		BidFloorCur: "USD",
 		Secure:      &secureVal,
 		Exp:         300, // advisory: max seconds between auction and impression serve
 		Video: &openrtb2.Video{
-			MIMEs:        []string{"video/mp4", "application/x-mpegURL", "video/mp4;codecs=avc1"},
-			Linearity:    adcom1.LinearityLinear,
-			MinDuration:  int64(minDur),
-			MaxDuration:  int64(maxDur),
-			Protocols:    protocols,
-			API:          apis,
-			W:            &vidW,
-			H:            &vidH,
-			StartDelay:   startDelay.Ptr(),
+			MIMEs:         []string{"video/mp4"},
+			Linearity:     adcom1.LinearityLinear,
+			MinDuration:   int64(minDur),
+			MaxDuration:   int64(maxDur),
+			Protocols:     protocols,
+			API:           apis,
+			W:             &vidW,
+			H:             &vidH,
+			StartDelay:    startDelay.Ptr(),
 			Skip:          &skipVal,
 			Sequence:      seqVal,
 			BoxingAllowed: &boxingVal,
@@ -1365,7 +1851,7 @@ imp := openrtb2.Imp{
 			// MaxExtended: -1 allows DSPs to run creatives beyond MaxDuration
 			// (e.g. 5 extra seconds for outstream completion).
 			// 0 = extension not allowed (default). -1 = unlimited extension.
-			MaxExtended:   -1,
+			MaxExtended: -1,
 		},
 	}
 
@@ -1388,46 +1874,61 @@ imp := openrtb2.Imp{
 		}
 	}
 
+	bidReq := &openrtb2.BidRequest{
+		ID:  auctionID,
+		Imp: []openrtb2.Imp{imp},
+		AT:  1,
+		Cur: []string{"USD"},
+	}
+
 	// ── Request-level auction parameters ─────────────────────────────────
-	tmax := int64(500) // fallback
+	var tmax int64 = 500 // fallback
 	if pr.TMax > 0 {
 		tmax = pr.TMax
 	}
 
+	bcatSeen := make(map[string]struct{})
 	var bcat []string
-	for _, c := range strings.Split(pr.BCat, ",") {
-		if c = strings.TrimSpace(c); c != "" {
-			bcat = append(bcat, c)
+	for _, c := range splitCSVTrim(pr.BCat) {
+		if c != "" {
+			if _, dup := bcatSeen[c]; !dup {
+				bcatSeen[c] = struct{}{}
+				bcat = append(bcat, c)
+			}
 		}
 	}
-	// Merge campaign-level blocked categories.
+	// Merge campaign-level blocked categories (deduplicated).
 	for _, c := range adsCfg.BCat {
 		if c != "" {
-			bcat = append(bcat, c)
+			if _, dup := bcatSeen[c]; !dup {
+				bcatSeen[c] = struct{}{}
+				bcat = append(bcat, c)
+			}
 		}
 	}
+	badvSeen := make(map[string]struct{})
 	var badv []string
-	for _, d := range strings.Split(pr.BAdv, ",") {
-		if d = strings.TrimSpace(d); d != "" {
-			badv = append(badv, d)
+	for _, d := range splitCSVTrim(pr.BAdv) {
+		if d != "" {
+			if _, dup := badvSeen[d]; !dup {
+				badvSeen[d] = struct{}{}
+				badv = append(badv, d)
+			}
 		}
 	}
-	// Merge campaign-level blocked advertisers.
+	// Merge campaign-level blocked advertisers (deduplicated).
 	for _, d := range adsCfg.BAdv {
 		if d != "" {
-			badv = append(badv, d)
+			if _, dup := badvSeen[d]; !dup {
+				badvSeen[d] = struct{}{}
+				badv = append(badv, d)
+			}
 		}
 	}
 
-	bidReq := &openrtb2.BidRequest{
-		ID:   auctionID,
-		Imp:  []openrtb2.Imp{imp},
-		AT:   1, // first-price auction
-		TMax: tmax,
-		Cur:  []string{"USD"},
-		BCat: bcat,
-		BAdv: badv,
-	}
+	bidReq.TMax = tmax
+	bidReq.BCat = bcat
+	bidReq.BAdv = badv
 
 	// ── App or Site context ───────────────────────────────────────────────
 	buildContent := func() *openrtb2.Content {
@@ -1456,26 +1957,16 @@ imp := openrtb2.Imp{
 		if pr.ContentLen > 0 {
 			c.Len = pr.ContentLen
 		}
-		if pr.ContentCat != "" {
-			for _, cat := range strings.Split(pr.ContentCat, ",") {
-				if cat = strings.TrimSpace(cat); cat != "" {
-					c.Cat = append(c.Cat, cat)
-				}
+		for _, cat := range splitCSVTrim(pr.ContentCat) {
+			if cat != "" {
+				c.Cat = append(c.Cat, cat)
 			}
 		}
 		return c
 	}
 
 	// parseSiteCat converts a comma-separated IAB category string to a []string.
-	parseCatList := func(csv string) []string {
-		var cats []string
-		for _, s := range strings.Split(csv, ",") {
-			if s = strings.TrimSpace(s); s != "" {
-				cats = append(cats, s)
-			}
-		}
-		return cats
-	}
+	parseCatList := func(csv string) []string { return splitCSVTrim(csv) }
 
 	// Publisher identity — shared across site and app contexts.
 	pub := &openrtb2.Publisher{
@@ -1603,10 +2094,7 @@ imp := openrtb2.Imp{
 	}
 	if pr.GPPSID != "" {
 		var gppSIDs []int8
-		for _, s := range strings.Split(pr.GPPSID, ",") {
-			if s = strings.TrimSpace(s); s == "" {
-				continue
-			}
+		for _, s := range splitCSVTrim(pr.GPPSID) {
 			if v, err := strconv.ParseInt(s, 10, 8); err == nil {
 				gppSIDs = append(gppSIDs, int8(v))
 			}
@@ -1675,53 +2163,69 @@ func substituteMacros(demandURL string, pr *PlayerRequest, adsCfg *AdServerConfi
 		maxDur = pr.MaxDuration
 	}
 
-	wStr   := strconv.FormatInt(pr.Width, 10)
-	hStr   := strconv.FormatInt(pr.Height, 10)
+	wStr := strconv.FormatInt(pr.Width, 10)
+	hStr := strconv.FormatInt(pr.Height, 10)
 	minStr := strconv.Itoa(minDur)
 	maxStr := strconv.Itoa(maxDur)
 
-	replacer := strings.NewReplacer(
-		"{cb}",            cbStr,
-		"{uip}",           pr.IP,
-		"{ua}",            url.QueryEscape(pr.UA),
-		"{app_bundle}",    pr.AppBundle,
-		"{app_name}",      url.QueryEscape(pr.AppName),
+	r := strings.NewReplacer(
+		"{cb}", cbStr,
+		"{uip}", pr.IP,
+		"{ua}", url.QueryEscape(pr.UA),
+		"{app_bundle}", pr.AppBundle,
+		"{app_name}", url.QueryEscape(pr.AppName),
 		"{app_store_url}", url.QueryEscape(pr.AppStoreURL),
-		"{device_make}",   url.QueryEscape(pr.DeviceMake),
-		"{device_model}",  url.QueryEscape(pr.DeviceModel),
-		"{device_type}",   strconv.Itoa(pr.DeviceType),
-		"{idfa}",          pr.IFA,
-		"{ifa}",           pr.IFA,
-		"{ifa_type}",      pr.IFAType,
-		"{device_os}",     url.QueryEscape(pr.DeviceOS),
-		"{os}",            url.QueryEscape(pr.DeviceOS),
-		"{device_osv}",    url.QueryEscape(pr.OSVersion),
-		"{osv}",           url.QueryEscape(pr.OSVersion),
-		"{version_os}",    url.QueryEscape(pr.OSVersion),
-		"{lang}",          pr.Language,
-		"{language}",      pr.Language,
-		"{country_code}",  pr.CountryCode,
-		"{dnt}",           strconv.Itoa(int(pr.DNT)),
-		"{lmt}",           strconv.Itoa(int(pr.LMT)),
-		"{skip}",          strconv.Itoa(int(pr.Skip)),
-		"{coppa}",         strconv.Itoa(int(pr.COPPA)),
-		"{us_privacy}",    pr.CCPA,
-		"{gdpr}",          pr.GDPR,
-		"{gdpr_consent}",  pr.Consent,
+		"{device_make}", url.QueryEscape(pr.DeviceMake),
+		"{device_model}", url.QueryEscape(pr.DeviceModel),
+		"{device_type}", strconv.Itoa(pr.DeviceType),
+		"{idfa}", pr.IFA,
+		"{ifa}", pr.IFA,
+		"{ifa_type}", pr.IFAType,
+		"{device_os}", url.QueryEscape(pr.DeviceOS),
+		"{os}", url.QueryEscape(pr.DeviceOS),
+		"{device_osv}", url.QueryEscape(pr.OSVersion),
+		"{osv}", url.QueryEscape(pr.OSVersion),
+		"{version_os}", url.QueryEscape(pr.OSVersion),
+		"{lang}", pr.Language,
+		"{language}", pr.Language,
+		"{country_code}", pr.CountryCode,
+		"{dnt}", strconv.Itoa(int(pr.DNT)),
+		"{lmt}", strconv.Itoa(int(pr.LMT)),
+		"{skip}", strconv.Itoa(int(pr.Skip)),
+		"{coppa}", strconv.Itoa(int(pr.COPPA)),
+		"{us_privacy}", pr.CCPA,
+		"{gdpr}", pr.GDPR,
+		"{gdpr_consent}", pr.Consent,
 		"{content_rating}", url.QueryEscape(pr.ContentRating),
 		"{content_length}", strconv.FormatInt(pr.ContentLen, 10),
 		// Dimension aliases (width/height are more common than w/h in tag URLs)
-		"{w}",             wStr,
-		"{h}",             hStr,
-		"{width}",         wStr,
-		"{height}",        hStr,
+		"{w}", wStr,
+		"{h}", hStr,
+		"{width}", wStr,
+		"{height}", hStr,
 		// Duration aliases
-		"{min_dur}",       minStr,
-		"{max_dur}",       maxStr,
-		"{min_duration}",  minStr,
-		"{max_duration}",  maxStr,
+		"{min_dur}", minStr,
+		"{max_dur}", maxStr,
+		"{min_duration}", minStr,
+		"{max_duration}", maxStr,
 	)
-	return replacer.Replace(demandURL)
+	return r.Replace(demandURL)
+}
+
+// splitCSVTrim splits a comma-separated string, trims spaces, and drops empties.
+func splitCSVTrim(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := parts[:0]
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1732,9 +2236,15 @@ func substituteMacros(demandURL string, pr *PlayerRequest, adsCfg *AdServerConfi
 // request, POSTs it to the campaign's demand ORTB endpoint, and returns the
 // applyOutboundHeaders sets outbound OpenRTB request headers directly on httpReq.
 // Writing directly avoids allocating the intermediate http.Header map.
-func applyOutboundHeaders(httpReq *http.Request, bidReq *openrtb2.BidRequest) {
+func applyOutboundHeaders(httpReq *http.Request, bidReq *openrtb2.BidRequest, ortbVersion string) {
 	httpReq.Header.Set("Content-Type", "application/json;charset=utf-8")
 	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Accept-Encoding", "gzip")
+	httpReq.Header.Set("Connection", "keep-alive")
+	if ortbVersion == "" {
+		ortbVersion = "2.5"
+	}
+	httpReq.Header.Set("X-OpenRTB-Version", ortbVersion)
 	if bidReq.Device != nil {
 		if bidReq.Device.UA != "" {
 			httpReq.Header.Set("User-Agent", bidReq.Device.UA)
@@ -1769,7 +2279,8 @@ func (h *VideoPipelineHandler) postToDemandORTB(
 	if err != nil {
 		return nil, fmt.Errorf("build HTTP request: %w", err)
 	}
-	applyOutboundHeaders(httpReq, bidReq)
+	httpReq.ContentLength = int64(len(body))
+	applyOutboundHeaders(httpReq, bidReq, adsCfg.OrtbVersion)
 
 	resp, err := h.demandClient.Do(httpReq)
 	if err != nil {
@@ -1856,15 +2367,15 @@ func fastGenerateID() string {
 // WinningBid holds the raw bid together with its creative and bidder identity.
 type WinningBid struct {
 	BidID   string
-	AdM     string  // VAST XML, VAST Wrapper tag URI, or inline media URL
-	NURL    string  // Win-notification URL — fire when bid wins (before serving)
-	BURL    string  // Billing URL — fire when impression is rendered (on start)
+	AdM     string // VAST XML, VAST Wrapper tag URI, or inline media URL
+	NURL    string // Win-notification URL — fire when bid wins (before serving)
+	BURL    string // Billing URL — fire when impression is rendered (on start)
 	Price   float64
 	Width   int64
 	Height  int64
 	CrID    string
 	DealID  string
-	ADomain []string  // Advertiser domains
+	ADomain []string // Advertiser domains
 }
 
 // bidCandidate is used internally by extractWinningBid for tie-break sorting.
@@ -1882,9 +2393,9 @@ type bidCandidate struct {
 //  1. Top price    — highest bid.Price wins.
 //  2. Seat weight  — when prices are equal, higher weight (adsCfg.SeatWeights) wins.
 //  3. Latency      — when weight is equal, the bid that appeared earliest in the
-//                    response wins (earlier index = faster seat).
+//     response wins (earlier index = faster seat).
 //  4. Stable key   — when all else is equal, lexicographic seat+":"+bid.ID
-//                    ensures repeatability across requests.
+//     ensures repeatability across requests.
 func (h *VideoPipelineHandler) extractWinningBid(
 	resp *openrtb2.BidResponse,
 	adsCfg *AdServerConfig,
@@ -1906,6 +2417,7 @@ func (h *VideoPipelineHandler) extractWinningBid(
 		for i := range seatBid.Bid {
 			bid := &seatBid.Bid[i]
 			pos++
+			bid.AdM = normalizeAdM(bid.AdM)
 			if bid.AdM == "" && bid.NURL == "" {
 				log.Printf("extractWinningBid: skipping bid %s from seat %s — empty AdM and NURL", bid.ID, seatBid.Seat)
 				continue
@@ -1915,19 +2427,19 @@ func (h *VideoPipelineHandler) extractWinningBid(
 				log.Printf("extractWinningBid: skipping bid %s from seat %s — price %.4f below floor %.4f", bid.ID, seatBid.Seat, bid.Price, adsCfg.FloorCPM)
 				continue
 			}
-					c := &bidCandidate{
-					win: WinningBid{
-						BidID:   bid.ID,
-						AdM:     bid.AdM,
-						NURL:    bid.NURL,
-						BURL:    bid.BURL,
-						Price:   bid.Price,
-						Width:   bid.W,
-						Height:  bid.H,
-						CrID:    bid.CrID,
-						DealID:  bid.DealID,
-						ADomain: bid.ADomain,
-					},
+			c := &bidCandidate{
+				win: WinningBid{
+					BidID:   bid.ID,
+					AdM:     bid.AdM,
+					NURL:    bid.NURL,
+					BURL:    bid.BURL,
+					Price:   bid.Price,
+					Width:   bid.W,
+					Height:  bid.H,
+					CrID:    bid.CrID,
+					DealID:  bid.DealID,
+					ADomain: bid.ADomain,
+				},
 				weight: seatWeight,
 				pos:    pos,
 				key:    seatBid.Seat + ":" + bid.ID,
@@ -1968,10 +2480,30 @@ type vastCreativeType uint8
 
 const (
 	adMIsVAST  vastCreativeType = iota // AdM contains a VAST XML document (Inline or Wrapper)
-	adMIsURI                            // AdM is a bare URL → use as Wrapper VASTAdTagURI
-	adMIsMedia                          // AdM is a direct media URL → build Inline around it
-	adMEmpty                            // AdM is empty; fall back to NURL/BURL
+	adMIsURI                           // AdM is a bare URL → use as Wrapper VASTAdTagURI
+	adMIsMedia                         // AdM is a direct media URL → build Inline around it
+	adMEmpty                           // AdM is empty; fall back to NURL/BURL
 )
+
+func isEmptyAdM(adm string) bool {
+	trim := strings.TrimSpace(adm)
+	if trim == "" {
+		return true
+	}
+	switch strings.ToLower(trim) {
+	case "null", "none", "empty", "kosong", "n/a", "na", "0":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeAdM(adm string) string {
+	if isEmptyAdM(adm) {
+		return ""
+	}
+	return adm
+}
 
 // mediaTypeForURL returns the MIME type and VAST delivery attribute for a media
 // URL, inferred from the URL path extension (query/fragment stripped).
@@ -1999,8 +2531,9 @@ func mediaTypeForURL(rawURL string) (mimeType, delivery string) {
 
 // classifyAdM determines how the bid AdM field should be interpreted.
 func classifyAdM(adm string) vastCreativeType {
-	if strings.TrimSpace(adm) == "" {
-		// Treat whitespace-only AdM (e.g. "adm":" ") the same as an absent one.
+	if isEmptyAdM(adm) {
+		// Treat whitespace/placeholder AdM (e.g. "adm":" ", "adm":"kosong")
+		// the same as an absent one.
 		return adMEmpty
 	}
 	probe := adm
@@ -2029,8 +2562,8 @@ func classifyAdM(adm string) vastCreativeType {
 //  2. The root element name must be "VAST" (case-insensitive).
 //  3. The first <Ad> child must itself contain either <InLine> or <Wrapper>.
 //     — Wrapper: accepted immediately after the XML structure check.  The
-//       document deliberately contains no self-contained creative; the player
-//       chain-fetches the next VAST URL, so we must not reject it.
+//     document deliberately contains no self-contained creative; the player
+//     chain-fetches the next VAST URL, so we must not reject it.
 //     — InLine:  accepted; it carries the actual creative.
 //     — Neither: rejected (e.g. <VAST><Error>…</Error></VAST> error docs).
 func validateVASTAdM(adm string) error {
@@ -2286,11 +2819,11 @@ func (h *VideoPipelineHandler) buildVASTInlineDoc(
 	}
 
 	events := []vastTracking{
-		{Event: "start",         Inner: vastCDATA{Text: h.buildTrackingURL(reqBaseURL, auctionID, win.BidID, bidder, pr.PlacementID, "start", win.CrID, win.Price, win.ADomain)}},
+		{Event: "start", Inner: vastCDATA{Text: h.buildTrackingURL(reqBaseURL, auctionID, win.BidID, bidder, pr.PlacementID, "start", win.CrID, win.Price, win.ADomain)}},
 		{Event: "firstQuartile", Inner: vastCDATA{Text: h.buildTrackingURL(reqBaseURL, auctionID, win.BidID, bidder, pr.PlacementID, "firstQuartile", win.CrID, win.Price, win.ADomain)}},
-		{Event: "midpoint",      Inner: vastCDATA{Text: h.buildTrackingURL(reqBaseURL, auctionID, win.BidID, bidder, pr.PlacementID, "midpoint", win.CrID, win.Price, win.ADomain)}},
+		{Event: "midpoint", Inner: vastCDATA{Text: h.buildTrackingURL(reqBaseURL, auctionID, win.BidID, bidder, pr.PlacementID, "midpoint", win.CrID, win.Price, win.ADomain)}},
 		{Event: "thirdQuartile", Inner: vastCDATA{Text: h.buildTrackingURL(reqBaseURL, auctionID, win.BidID, bidder, pr.PlacementID, "thirdQuartile", win.CrID, win.Price, win.ADomain)}},
-		{Event: "complete",      Inner: vastCDATA{Text: h.buildTrackingURL(reqBaseURL, auctionID, win.BidID, bidder, pr.PlacementID, "complete", win.CrID, win.Price, win.ADomain)}},
+		{Event: "complete", Inner: vastCDATA{Text: h.buildTrackingURL(reqBaseURL, auctionID, win.BidID, bidder, pr.PlacementID, "complete", win.CrID, win.Price, win.ADomain)}},
 	}
 
 	mimeType, deliveryMode := mediaTypeForURL(mediaURL)
@@ -2349,6 +2882,14 @@ func injectVASTImpression(vast, trackURL string) string {
 // an optional id attribute on the <Impression> element (e.g. id="burl"),
 // which is useful for distinguishing PBS, DSP, and billing pixels server-side.
 func injectVASTImpressionWithID(vast, trackURL, id string) string {
+	if trackURL == "" {
+		return vast
+	}
+	// Deduplicate: if the exact tracking URL already exists inside any Impression,
+	// skip injection to avoid over-counting.
+	if strings.Contains(vast, trackURL) {
+		return vast
+	}
 	var tag string
 	if id != "" {
 		tag = `<Impression id="` + id + `"><![CDATA[` + trackURL + `]]></Impression>`
@@ -2387,8 +2928,23 @@ func injectVASTTracking(vast string, events []vastTracking) string {
 	if len(events) == 0 {
 		return vast
 	}
-	var sb strings.Builder
+	// Build only tracking pixels that are not already present in the document
+	// to prevent duplicate beacon fires (discrepancy vs. DSP billing).
+	var filtered []vastTracking
 	for _, ev := range events {
+		if ev.Inner.Text == "" {
+			continue
+		}
+		if strings.Contains(vast, ev.Inner.Text) {
+			continue
+		}
+		filtered = append(filtered, ev)
+	}
+	if len(filtered) == 0 {
+		return vast
+	}
+	var sb strings.Builder
+	for _, ev := range filtered {
 		fmt.Fprintf(&sb, `<Tracking event="%s"><![CDATA[%s]]></Tracking>`, ev.Event, ev.Inner.Text)
 	}
 	block := sb.String()
@@ -2716,11 +3272,6 @@ func (h *VideoPipelineHandler) writeVASTResponse(w http.ResponseWriter, vastXML 
 	h.bufPool.Put(buf)
 }
 
-// emptyVAST is a minimal well-formed VAST 3.0 document with no Ad elements.
-// Video players that cannot handle HTTP 204 (e.g. Roku, Fire TV, Samsung) use
-// this to gracefully skip the ad slot without throwing an error.
-const emptyVAST = `<?xml version="1.0" encoding="UTF-8"?><VAST version="3.0"/>`
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Stage 7 — TrackingEndpoint
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2761,7 +3312,9 @@ func (h *VideoPipelineHandler) TrackingEndpoint() httprouter.Handle {
 		if ev.Event == EventComplete {
 			if cfg, err2 := h.resolveAdServerConfig(ev.PlacementID); err2 == nil {
 				h.videoStats.incComplete(cfg.PublisherID)
+				h.videoStats.incAdvertiserComplete(cfg.AdvertiserID)
 			}
+			h.videoStats.incDimComplete(ev.AuctionID)
 		}
 
 		// Respond with a 1×1 transparent GIF so players treating this as
@@ -2813,12 +3366,9 @@ func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
 			ReceivedAt:  time.Now(),
 		})
 
-		h.metricsEng.RecordImps(metrics.ImpLabels{VideoImps: true})
-		if placementID != "" {
-			if cfg, err := h.resolveAdServerConfig(placementID); err == nil {
-				h.videoStats.incImpression(cfg.PublisherID)
-			}
-		}
+		// Impression was already credited at fill time (VASTEndpoint/ORTBEndpoint).
+		// This beacon is recorded as a tracking event for audit purposes only.
+		h.videoStats.incDimImpression(auctionID)
 
 		// Respond with a 1×1 transparent GIF.
 		w.Header().Set("Content-Type", "image/gif")
@@ -2835,13 +3385,45 @@ func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
 }
 
 // TrackingEventsEndpoint exposes recorded tracking events as JSON (useful for
-// the dashboard / debugging).
+// the dashboard / debugging). Supports optional pagination via ?limit=N&offset=M.
 //
 // Route: GET /video/tracking/events
 func (h *VideoPipelineHandler) TrackingEventsEndpoint() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		events := h.tracking.all()
-		data, _ := json.Marshal(events)
+
+		// Pagination: ?limit=N&offset=M (defaults: offset=0, limit=1000)
+		q := r.URL.Query()
+		offset := 0
+		limit := 1000
+		if v := q.Get("offset"); v != "" {
+			if n, e := strconv.Atoi(v); e == nil && n >= 0 {
+				offset = n
+			}
+		}
+		if v := q.Get("limit"); v != "" {
+			if n, e := strconv.Atoi(v); e == nil && n > 0 {
+				limit = n
+			}
+		}
+		total := len(events)
+		if offset > total {
+			offset = total
+		}
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		page := events[offset:end]
+
+		resp := struct {
+			Total  int             `json:"total"`
+			Offset int             `json:"offset"`
+			Limit  int             `json:"limit"`
+			Events []TrackingEvent `json:"events"`
+		}{Total: total, Offset: offset, Limit: limit, Events: page}
+
+		data, _ := json.Marshal(resp)
 		hdr := w.Header()
 		hdr.Set("Content-Type", "application/json")
 		hdr.Set("Content-Length", strconv.Itoa(len(data)))
@@ -2853,6 +3435,12 @@ func (h *VideoPipelineHandler) TrackingEventsEndpoint() httprouter.Handle {
 // ─────────────────────────────────────────────────────────────────────────────
 // Video Statistics endpoint
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Snapshot returns a live snapshot of all video statistics.
+// Used by DashboardRegistry.WireVideoStats to enrich supply/demand partner list responses.
+func (h *VideoPipelineHandler) Snapshot() VideoStatsPayload {
+	return h.videoStats.snapshot()
+}
 
 // VideoStatsEndpoint exposes per-publisher ad request / opportunity / impression
 // / revenue counters accumulated since the server last started.
@@ -2940,7 +3528,8 @@ func (h *VideoPipelineHandler) DashboardConfigEndpoint() httprouter.Handle {
 // AdServerConfigEndpoint exposes GET (list) and POST (upsert) for ad server configs.
 //
 // Route: GET  /video/adserver
-//        POST /video/adserver
+//
+//	POST /video/adserver
 func (h *VideoPipelineHandler) AdServerConfigEndpoint() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		switch r.Method {
@@ -2981,5 +3570,3 @@ func (h *VideoPipelineHandler) AdServerConfigEndpoint() httprouter.Handle {
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-

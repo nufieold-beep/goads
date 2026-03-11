@@ -197,5 +197,3 @@ func setHeaders(request *openrtb2.BidRequest) http.Header {
 	}
 	return headers
 }
-
-

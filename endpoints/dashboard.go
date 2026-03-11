@@ -1,7 +1,9 @@
 package endpoints
 
 import (
+	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -19,15 +21,58 @@ import (
 	metricsConf "github.com/prebid/prebid-server/v4/metrics/config"
 )
 
+var (
+	dashDBOnce sync.Once
+	dashDB     *sql.DB
+)
+
+func getDashDB() *sql.DB {
+	dashDBOnce.Do(func() {
+		dsn := os.Getenv("DASH_DB_DSN")
+		if dsn == "" {
+			return
+		}
+		db, err := sql.Open("postgres", dsn)
+		if err != nil {
+			log.Printf("dashboard: postgres connect failed, falling back to file store: %v", err)
+			return
+		}
+		db.SetMaxOpenConns(10)
+		db.SetMaxIdleConns(10)
+		db.SetConnMaxLifetime(5 * time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
+			log.Printf("dashboard: postgres ping failed, falling back to file store: %v", err)
+			_ = db.Close()
+			return
+		}
+		if _, err := db.ExecContext(ctx, `
+			CREATE TABLE IF NOT EXISTS dashboard_entities (
+				kind TEXT NOT NULL,
+				id   TEXT NOT NULL,
+				payload JSONB NOT NULL,
+				PRIMARY KEY (kind,id)
+			);`); err != nil {
+			log.Printf("dashboard: create table failed, falling back to file store: %v", err)
+			_ = db.Close()
+			return
+		}
+		dashDB = db
+		log.Printf("dashboard: postgres store enabled (table dashboard_entities)")
+	})
+	return dashDB
+}
+
 // DashboardStats is the JSON payload returned by /dashboard/stats
 type DashboardStats struct {
-	Impressions      DashboardImpStats          `json:"impressions"`
-	Requests         DashboardRequestStats      `json:"requests"`
-	Connections      DashboardConnectionStats   `json:"connections"`
-	Privacy          DashboardPrivacyStats      `json:"privacy"`
-	Cache            DashboardCacheStats        `json:"cache"`
-	Bidders          []DashboardBidderStats     `json:"bidders"`
-	TopBiddersByBids []DashboardBidderStats     `json:"top_bidders_by_bids"`
+	Impressions      DashboardImpStats        `json:"impressions"`
+	Requests         DashboardRequestStats    `json:"requests"`
+	Connections      DashboardConnectionStats `json:"connections"`
+	Privacy          DashboardPrivacyStats    `json:"privacy"`
+	Cache            DashboardCacheStats      `json:"cache"`
+	Bidders          []DashboardBidderStats   `json:"bidders"`
+	TopBiddersByBids []DashboardBidderStats   `json:"top_bidders_by_bids"`
 }
 
 type DashboardImpStats struct {
@@ -48,17 +93,17 @@ type DashboardRequestStats struct {
 }
 
 type DashboardConnectionStats struct {
-	Active              int64 `json:"active"`
-	AcceptErrors        int64 `json:"accept_errors"`
-	CloseErrors         int64 `json:"close_errors"`
+	Active       int64 `json:"active"`
+	AcceptErrors int64 `json:"accept_errors"`
+	CloseErrors  int64 `json:"close_errors"`
 }
 
 type DashboardPrivacyStats struct {
-	CCPARequests    int64 `json:"ccpa_requests"`
-	CCPAOptOut      int64 `json:"ccpa_opt_out"`
-	COPPARequests   int64 `json:"coppa_requests"`
-	TCFv2Requests   int64 `json:"tcf_v2_requests"`
-	LMTRequests     int64 `json:"lmt_requests"`
+	CCPARequests  int64 `json:"ccpa_requests"`
+	CCPAOptOut    int64 `json:"ccpa_opt_out"`
+	COPPARequests int64 `json:"coppa_requests"`
+	TCFv2Requests int64 `json:"tcf_v2_requests"`
+	LMTRequests   int64 `json:"lmt_requests"`
 }
 
 type DashboardCacheStats struct {
@@ -71,11 +116,11 @@ type DashboardCacheStats struct {
 }
 
 type DashboardBidderStats struct {
-	Name           string  `json:"name"`
-	BidsReceived   int64   `json:"bids_received"`
-	NoBids         int64   `json:"no_bids"`
-	Errors         int64   `json:"errors"`
-	AvgResponseMs  float64 `json:"avg_response_ms"`
+	Name          string  `json:"name"`
+	BidsReceived  int64   `json:"bids_received"`
+	NoBids        int64   `json:"no_bids"`
+	Errors        int64   `json:"errors"`
+	AvgResponseMs float64 `json:"avg_response_ms"`
 }
 
 // NewDashboardHandler returns an httprouter.Handle that serves the dashboard HTML page.
@@ -141,22 +186,28 @@ func NewExtStatsFetchHandler() httprouter.Handle {
 			w.Header().Set("Content-Type", ct)
 		}
 		w.WriteHeader(resp.StatusCode)
-		_, _ = io.Copy(w, resp.Body)
+		_, _ = io.Copy(w, io.LimitReader(resp.Body, 1<<20)) // 1 MB cap
 	}
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Dashboard authentication — session tokens, cookie: dash_session
-// Single admin account: admin / zero123
+// Credentials are read from DASH_ADMIN_USER / DASH_ADMIN_PASS environment variables.
 // Sessions survive server restarts via data/dash_sessions.json.
 // ──────────────────────────────────────────────────────────────────────────────
 
 const (
 	dashSessionCookie = "dash_session"
 	dashSessionTTL    = 7 * 24 * time.Hour // 7 days — survives a work week
-	dashAdminUser     = "admin"
-	dashAdminPass     = "zero123"
 	dashSessionFile   = "./data/dash_sessions.json"
+)
+
+// dashAdminUser and dashAdminPass are read from DASH_ADMIN_USER / DASH_ADMIN_PASS
+// environment variables. The hard-coded defaults ensure backwards compatibility
+// but DASH_ADMIN_PASS must be changed in production via the env var.
+var (
+	dashAdminUser string
+	dashAdminPass string
 )
 
 var (
@@ -165,6 +216,13 @@ var (
 )
 
 func init() {
+	// Credentials — prefer environment variables, fall back to built-in defaults.
+	if dashAdminUser = os.Getenv("DASH_ADMIN_USER"); dashAdminUser == "" {
+		dashAdminUser = "admin"
+	}
+	if dashAdminPass = os.Getenv("DASH_ADMIN_PASS"); dashAdminPass == "" {
+		log.Fatal("DASH_ADMIN_PASS must be set; refusing to start dashboard with default password")
+	}
 	// Load persisted sessions from disk on startup.
 	data, err := os.ReadFile(dashSessionFile)
 	if err == nil {
@@ -180,7 +238,19 @@ func init() {
 	}
 }
 
+// pruneExpiredSessions removes expired entries from the in-memory session map.
+func pruneExpiredSessions(now time.Time) {
+	dashSessionsMu.Lock()
+	for token, exp := range dashSessions {
+		if now.After(exp) {
+			delete(dashSessions, token)
+		}
+	}
+	dashSessionsMu.Unlock()
+}
+
 func saveDashSessions() {
+	pruneExpiredSessions(time.Now())
 	dashSessionsMu.RLock()
 	cp := make(map[string]time.Time, len(dashSessions))
 	for k, v := range dashSessions {
@@ -288,7 +358,8 @@ func NewDashboardLoginPostHandler() httprouter.Handle {
 			Value:    token,
 			Path:     "/",
 			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
+			Secure:   true,
+			SameSite: http.SameSiteStrictMode,
 			MaxAge:   int(dashSessionTTL.Seconds()),
 		})
 		if strings.Contains(ct, "application/json") {
@@ -310,10 +381,12 @@ func NewDashboardLogoutHandler() httprouter.Handle {
 			go saveDashSessions()
 		}
 		http.SetCookie(w, &http.Cookie{
-			Name:   dashSessionCookie,
-			Value:  "",
-			Path:   "/",
-			MaxAge: -1,
+			Name:     dashSessionCookie,
+			Value:    "",
+			Path:     "/",
+			Secure:   true,
+			SameSite: http.SameSiteStrictMode,
+			MaxAge:   -1,
 		})
 		http.Redirect(w, r, "/dashboard/login", http.StatusFound)
 	}
@@ -527,9 +600,9 @@ type VideoExchangeEntry struct {
 	IntegrationType string `json:"integration_type,omitempty"` // "tag_based"|"open_rtb"
 
 	// Source pricing
-	PricingType  string  `json:"pricing_type,omitempty"` // "fixed_cpm"|"share_revenue"|"floor_price"
-	RevShare     float64 `json:"rev_share,omitempty"`    // 0–100 %
-	AdvFloorCPM  float64 `json:"adv_floor_cpm,omitempty"` // advertiser's floor CPM
+	PricingType string  `json:"pricing_type,omitempty"`  // "fixed_cpm"|"share_revenue"|"floor_price"
+	RevShare    float64 `json:"rev_share,omitempty"`     // 0–100 %
+	AdvFloorCPM float64 `json:"adv_floor_cpm,omitempty"` // advertiser's floor CPM
 
 	// Exchange controls
 	FloorCPM float64  `json:"floor_cpm"`
@@ -643,8 +716,8 @@ func dataStorePath(dataDir, filename string) string {
 // VideoExchangeHandler owns the store and exposes five httprouter.Handle methods.
 type VideoExchangeHandler struct {
 	store       *VideoExchangeStore
-	campStore   *campaignStore           // resolved lazily via SetCampaignStore
-	registerCfg func(*AdServerConfig)    // pipline config hook; set via SetPipelineRegister
+	campStore   *campaignStore        // resolved lazily via SetCampaignStore
+	registerCfg func(*AdServerConfig) // pipline config hook; set via SetPipelineRegister
 }
 
 // NewVideoExchangeHandler creates a VideoExchangeHandler backed by a persistent store.
@@ -694,6 +767,7 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 		if camp, ok := h.campStore.get(e.CampaignID); ok {
 			cfg.DemandVASTURL = camp.VASTTagURL
 			cfg.DemandOrtbURL = camp.OrtbEndpointURL
+			cfg.AdvertiserID = camp.AdvertiserID
 			// Apply campaign-level floor only when set.
 			if camp.FloorCPM > 0 {
 				cfg.FloorCPM = camp.FloorCPM
@@ -853,6 +927,38 @@ func storeList[E storeable](mu *sync.RWMutex, entries map[string]E) []E {
 
 // storeSave serialises entries to filePath atomically.
 func storeSave[E storeable](mu *sync.RWMutex, entries map[string]E, filePath, label string) {
+	if db := getDashDB(); db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			log.Printf("%s store: begin tx: %v", label, err)
+			return
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM dashboard_entities WHERE kind=$1`, label); err != nil {
+			log.Printf("%s store: purge: %v", label, err)
+			_ = tx.Rollback()
+			return
+		}
+		mu.RLock()
+		for _, e := range entries {
+			b, err := json.Marshal(e)
+			if err != nil {
+				log.Printf("%s store: marshal: %v", label, err)
+				continue
+			}
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO dashboard_entities(kind,id,payload) VALUES ($1,$2,$3)`,
+				label, e.getID(), b); err != nil {
+				log.Printf("%s store: insert: %v", label, err)
+			}
+		}
+		mu.RUnlock()
+		if err := tx.Commit(); err != nil {
+			log.Printf("%s store: commit: %v", label, err)
+		}
+		return
+	}
 	if filePath == "" {
 		return
 	}
@@ -869,6 +975,41 @@ func storeSave[E storeable](mu *sync.RWMutex, entries map[string]E, filePath, la
 
 // storeLoad deserialises entries from filePath into the entries map.
 func storeLoad[E storeable](mu *sync.RWMutex, entries map[string]E, filePath, label string) {
+	if db := getDashDB(); db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		rows, err := db.QueryContext(ctx, `SELECT payload FROM dashboard_entities WHERE kind=$1`, label)
+		if err != nil {
+			log.Printf("%s store: load db: %v", label, err)
+			return
+		}
+		defer rows.Close()
+		var payloads []json.RawMessage
+		for rows.Next() {
+			var b []byte
+			if err := rows.Scan(&b); err != nil {
+				log.Printf("%s store: scan: %v", label, err)
+				return
+			}
+			payloads = append(payloads, b)
+		}
+		data, err := json.Marshal(payloads)
+		if err != nil {
+			log.Printf("%s store: marshal list: %v", label, err)
+			return
+		}
+		var list []E
+		if err := json.Unmarshal(data, &list); err != nil {
+			log.Printf("%s store: parse db: %v", label, err)
+			return
+		}
+		mu.Lock()
+		for _, e := range list {
+			entries[e.getID()] = e
+		}
+		mu.Unlock()
+		return
+	}
 	if filePath == "" {
 		return
 	}
@@ -884,9 +1025,11 @@ func storeLoad[E storeable](mu *sync.RWMutex, entries map[string]E, filePath, la
 		log.Printf("%s store: parse: %v", label, err)
 		return
 	}
+	mu.Lock()
 	for _, e := range list {
 		entries[e.getID()] = e
 	}
+	mu.Unlock()
 }
 
 // ── Generic entity store ──────────────────────────────────────────────────────
@@ -1236,8 +1379,8 @@ func (h *DomainListHandler) Delete() httprouter.Handle { return h.store.deleteHa
 
 // TargetingRule represents a single targeting criterion for a Campaign.
 type TargetingRule struct {
-	Type  string `json:"type"`  // geo, device_type, os, app_bundle, domain, day_part
-	Op    string `json:"op"`    // is, is_not, contains
+	Type  string `json:"type"` // geo, device_type, os, app_bundle, domain, day_part
+	Op    string `json:"op"`   // is, is_not, contains
 	Value string `json:"value"`
 }
 
@@ -1256,18 +1399,18 @@ type ExtStatsConfig struct {
 // VASTTagURL holds the third-party VAST tag URL (optional).
 // OrtbEndpointURL holds the third-party OpenRTB endpoint URL (optional).
 type Campaign struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	AdvertiserID    string    `json:"advertiser_id"`
-	PublisherID     string    `json:"publisher_id,omitempty"`
-	VASTTagURL      string    `json:"vast_tag_url,omitempty"`
-	OrtbEndpointURL string    `json:"ortb_endpoint_url,omitempty"`
-	FloorCPM        float64   `json:"floor_cpm"`
-	Status          string    `json:"status"` // "active" | "paused"
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	AdvertiserID    string  `json:"advertiser_id"`
+	PublisherID     string  `json:"publisher_id,omitempty"`
+	VASTTagURL      string  `json:"vast_tag_url,omitempty"`
+	OrtbEndpointURL string  `json:"ortb_endpoint_url,omitempty"`
+	FloorCPM        float64 `json:"floor_cpm"`
+	Status          string  `json:"status"` // "active" | "paused"
 
 	// Integration & OpenRTB settings
-	IntegrationType  string   `json:"integration_type,omitempty"`   // "tag_based"|"open_rtb"|"direct_demand"|"prebid_server"
-	OrtbVersion      string   `json:"ortb_version,omitempty"`       // "2.5"|"2.6"|"3.0"
+	IntegrationType  string   `json:"integration_type,omitempty"` // "tag_based"|"open_rtb"|"direct_demand"|"prebid_server"
+	OrtbVersion      string   `json:"ortb_version,omitempty"`     // "2.5"|"2.6"|"3.0"
 	MimeTypes        []string `json:"mime_types,omitempty"`
 	Protocols        []int    `json:"protocols,omitempty"`          // IAB VAST protocol IDs (1–10)
 	DemandTypes      []string `json:"demand_types,omitempty"`       // "video"|"display"|"audio"
@@ -1298,12 +1441,12 @@ type Campaign struct {
 	SupplyLinks []string `json:"supply_links,omitempty"`
 
 	// Automation & pacing
-	BudgetTotal       float64  `json:"budget_total,omitempty"`
-	BudgetDaily       float64  `json:"budget_daily,omitempty"`
-	PacingType        string   `json:"pacing_type,omitempty"`       // "even"|"accelerated"|"front_loaded"
-	AutoBidding       bool     `json:"auto_bidding"`
-	AutoBiddingGoal   string   `json:"auto_bidding_goal,omitempty"` // "vcr"|"cpm"|"cpcv"|"viewability"
-	AutoBiddingTarget float64  `json:"auto_bidding_target,omitempty"`
+	BudgetTotal       float64 `json:"budget_total,omitempty"`
+	BudgetDaily       float64 `json:"budget_daily,omitempty"`
+	PacingType        string  `json:"pacing_type,omitempty"` // "even"|"accelerated"|"front_loaded"
+	AutoBidding       bool    `json:"auto_bidding"`
+	AutoBiddingGoal   string  `json:"auto_bidding_goal,omitempty"` // "vcr"|"cpm"|"cpcv"|"viewability"
+	AutoBiddingTarget float64 `json:"auto_bidding_target,omitempty"`
 
 	// Scheduling — ISO date strings (YYYY-MM-DD)
 	StartDate       string   `json:"start_date,omitempty"`
@@ -1343,9 +1486,9 @@ func (c *Campaign) validate() string {
 	return ""
 }
 
-func (c *Campaign) getID() string                { return c.ID }
-func (c *Campaign) getCreatedAt() time.Time      { return c.CreatedAt }
-func (c *Campaign) setID(id string)              { c.ID = id }
+func (c *Campaign) getID() string                 { return c.ID }
+func (c *Campaign) getCreatedAt() time.Time       { return c.CreatedAt }
+func (c *Campaign) setID(id string)               { c.ID = id }
 func (c *Campaign) setTimestamps(cr, u time.Time) { c.CreatedAt = cr; c.UpdatedAt = u }
 
 type campaignStore = entityStore[*Campaign]
@@ -1524,11 +1667,15 @@ func (h *AudienceSegmentHandler) List() httprouter.Handle { return h.store.listH
 func (h *AudienceSegmentHandler) Create() httprouter.Handle {
 	return h.store.createHandle(func() *AudienceSegment { return &AudienceSegment{} })
 }
-func (h *AudienceSegmentHandler) Get() httprouter.Handle    { return h.store.getHandle("audience segment") }
+func (h *AudienceSegmentHandler) Get() httprouter.Handle {
+	return h.store.getHandle("audience segment")
+}
 func (h *AudienceSegmentHandler) Update() httprouter.Handle {
 	return h.store.updateHandle("audience segment", func() *AudienceSegment { return &AudienceSegment{} })
 }
-func (h *AudienceSegmentHandler) Delete() httprouter.Handle { return h.store.deleteHandle("audience segment") }
+func (h *AudienceSegmentHandler) Delete() httprouter.Handle {
+	return h.store.deleteHandle("audience segment")
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Yield Rule CRUD
@@ -1538,10 +1685,10 @@ func (h *AudienceSegmentHandler) Delete() httprouter.Handle { return h.store.del
 type YieldPriority string
 
 const (
-	YieldPriorityPremium     YieldPriority = "premium"      // direct deals / guaranteed
-	YieldPriorityGuaranteed  YieldPriority = "guaranteed"   // reserved inventory
+	YieldPriorityPremium      YieldPriority = "premium"      // direct deals / guaranteed
+	YieldPriorityGuaranteed   YieldPriority = "guaranteed"   // reserved inventory
 	YieldPriorityProgrammatic YieldPriority = "programmatic" // open auction / header bidding
-	YieldPriorityHouseAd     YieldPriority = "house"        // fallback / self-promo
+	YieldPriorityHouseAd      YieldPriority = "house"        // fallback / self-promo
 )
 
 // YieldRule expresses a floor CPM, priority tier, quality thresholds, and an optional
@@ -1567,7 +1714,7 @@ type YieldRule struct {
 
 	// Quality thresholds — only serve when signals meet or exceed these
 	ViewabilityThreshold float64 `json:"viewability_threshold,omitempty"` // 0–100 %
-	VCRThreshold         float64 `json:"vcr_threshold,omitempty"`          // 0–100 %
+	VCRThreshold         float64 `json:"vcr_threshold,omitempty"`         // 0–100 %
 
 	// Audience segment scoping (empty = all traffic)
 	SegmentIDs []string `json:"segment_ids,omitempty"`
@@ -1622,7 +1769,7 @@ func (h *YieldRuleHandler) List() httprouter.Handle { return h.store.listHandle(
 func (h *YieldRuleHandler) Create() httprouter.Handle {
 	return h.store.createHandle(func() *YieldRule { return &YieldRule{} })
 }
-func (h *YieldRuleHandler) Get() httprouter.Handle    { return h.store.getHandle("yield rule") }
+func (h *YieldRuleHandler) Get() httprouter.Handle { return h.store.getHandle("yield rule") }
 func (h *YieldRuleHandler) Update() httprouter.Handle {
 	return h.store.updateHandle("yield rule", func() *YieldRule { return &YieldRule{} })
 }
@@ -1637,8 +1784,8 @@ func (h *YieldRuleHandler) Delete() httprouter.Handle { return h.store.deleteHan
 // BidderScorecard tracks per-bidder reliability metrics used by the
 // optimization engine to route premium inventory to the best-performing demand.
 type BidderScorecard struct {
-	ID                string     `json:"id"`
-	BidderName        string     `json:"bidder_name"`
+	ID         string `json:"id"`
+	BidderName string `json:"bidder_name"`
 	// Rate fields are 0–1 fractions
 	BidRate           float64    `json:"bid_rate"`            // fraction of requests that received a bid
 	WinRate           float64    `json:"win_rate"`            // fraction of bids that won
@@ -1705,11 +1852,15 @@ func (h *BidderScorecardHandler) List() httprouter.Handle { return h.store.listH
 func (h *BidderScorecardHandler) Create() httprouter.Handle {
 	return h.store.createHandle(func() *BidderScorecard { return &BidderScorecard{} })
 }
-func (h *BidderScorecardHandler) Get() httprouter.Handle    { return h.store.getHandle("bidder scorecard") }
+func (h *BidderScorecardHandler) Get() httprouter.Handle {
+	return h.store.getHandle("bidder scorecard")
+}
 func (h *BidderScorecardHandler) Update() httprouter.Handle {
 	return h.store.updateHandle("bidder scorecard", func() *BidderScorecard { return &BidderScorecard{} })
 }
-func (h *BidderScorecardHandler) Delete() httprouter.Handle { return h.store.deleteHandle("bidder scorecard") }
+func (h *BidderScorecardHandler) Delete() httprouter.Handle {
+	return h.store.deleteHandle("bidder scorecard")
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Dynamic Floor Rule
@@ -1745,9 +1896,9 @@ type DynamicFloorRule struct {
 	TargetFillRate float64 `json:"target_fill_rate,omitempty"` // 0–1, e.g. 0.85
 	FloorStepPct   float64 `json:"floor_step_pct,omitempty"`   // % change per cycle, e.g. 5.0
 	// Demand path scope: "direct"|"pmp"|"open_auction"|"*"
-	DemandPath string `json:"demand_path,omitempty"`
-	Priority   int    `json:"priority"` // higher value wins when segments overlap
-	Active     bool   `json:"active"`
+	DemandPath string    `json:"demand_path,omitempty"`
+	Priority   int       `json:"priority"` // higher value wins when segments overlap
+	Active     bool      `json:"active"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -1801,11 +1952,15 @@ func (h *DynamicFloorRuleHandler) List() httprouter.Handle { return h.store.list
 func (h *DynamicFloorRuleHandler) Create() httprouter.Handle {
 	return h.store.createHandle(func() *DynamicFloorRule { return &DynamicFloorRule{} })
 }
-func (h *DynamicFloorRuleHandler) Get() httprouter.Handle    { return h.store.getHandle("dynamic floor rule") }
+func (h *DynamicFloorRuleHandler) Get() httprouter.Handle {
+	return h.store.getHandle("dynamic floor rule")
+}
 func (h *DynamicFloorRuleHandler) Update() httprouter.Handle {
 	return h.store.updateHandle("dynamic floor rule", func() *DynamicFloorRule { return &DynamicFloorRule{} })
 }
-func (h *DynamicFloorRuleHandler) Delete() httprouter.Handle { return h.store.deleteHandle("dynamic floor rule") }
+func (h *DynamicFloorRuleHandler) Delete() httprouter.Handle {
+	return h.store.deleteHandle("dynamic floor rule")
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Request QA Profile
@@ -1824,23 +1979,23 @@ type QARequiredField struct {
 // environment. Requests that fail these checks are rejected or CPM-penalised
 // before entering the auction.
 type RequestQAProfile struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	PublisherID string            `json:"publisher_id,omitempty"`
-	Environment string            `json:"environment,omitempty"` // "ctv"|"inapp"|"*"
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	PublisherID string `json:"publisher_id,omitempty"`
+	Environment string `json:"environment,omitempty"` // "ctv"|"inapp"|"*"
 	// Required field rules
 	RequiredFields []QARequiredField `json:"required_fields,omitempty"`
 	// Technical quality gates
-	MaxWrapperDepth   int     `json:"max_wrapper_depth,omitempty"`   // e.g. 3
-	MinFloorCPM       float64 `json:"min_floor_cpm,omitempty"`
-	MaxBidderTimeout  int     `json:"max_bidder_timeout_ms,omitempty"`
+	MaxWrapperDepth  int     `json:"max_wrapper_depth,omitempty"` // e.g. 3
+	MinFloorCPM      float64 `json:"min_floor_cpm,omitempty"`
+	MaxBidderTimeout int     `json:"max_bidder_timeout_ms,omitempty"`
 	// Brand safety
 	BlockedCategories  []string `json:"blocked_categories,omitempty"`  // IAB content categories
 	BlockedAdvertisers []string `json:"blocked_advertisers,omitempty"` // domain list
 	// Privacy & supply chain compliance
-	RequireConsent    bool `json:"require_consent"`
-	RequireAppAdsTxt  bool `json:"require_app_ads_txt"`
-	RequireSChain     bool `json:"require_schain"`
+	RequireConsent   bool `json:"require_consent"`
+	RequireAppAdsTxt bool `json:"require_app_ads_txt"`
+	RequireSChain    bool `json:"require_schain"`
 	// Operational
 	Active    bool      `json:"active"`
 	CreatedAt time.Time `json:"created_at"`
@@ -1894,11 +2049,15 @@ func (h *RequestQAProfileHandler) List() httprouter.Handle { return h.store.list
 func (h *RequestQAProfileHandler) Create() httprouter.Handle {
 	return h.store.createHandle(func() *RequestQAProfile { return &RequestQAProfile{} })
 }
-func (h *RequestQAProfileHandler) Get() httprouter.Handle    { return h.store.getHandle("request QA profile") }
+func (h *RequestQAProfileHandler) Get() httprouter.Handle {
+	return h.store.getHandle("request QA profile")
+}
 func (h *RequestQAProfileHandler) Update() httprouter.Handle {
 	return h.store.updateHandle("request QA profile", func() *RequestQAProfile { return &RequestQAProfile{} })
 }
-func (h *RequestQAProfileHandler) Delete() httprouter.Handle { return h.store.deleteHandle("request QA profile") }
+func (h *RequestQAProfileHandler) Delete() httprouter.Handle {
+	return h.store.deleteHandle("request QA profile")
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Timeout Profile
@@ -1909,8 +2068,8 @@ func (h *RequestQAProfileHandler) Delete() httprouter.Handle { return h.store.de
 // Separate profiles allow tighter deadlines for banner/mobile while allowing
 // more headroom for premium CTV pods.
 type TimeoutProfile struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 	// Environment — one of: "ctv_client"|"mobile_client"|"ssai"|"longform_pod"|"default"
 	Environment     string `json:"environment"`
 	TotalBudgetMS   int    `json:"total_budget_ms"`   // wall-clock deadline for the full auction
@@ -1918,7 +2077,7 @@ type TimeoutProfile struct {
 	VASTTimeoutMS   int    `json:"vast_timeout_ms"`   // per VAST wrapper resolve step
 	NoBidGraceMS    int    `json:"no_bid_grace_ms"`   // extra grace after first bid arrives
 	// Auto-scaling — multiply total_budget_ms by premium_multiplier for high-value traffic
-	AutoScale        bool    `json:"auto_scale"`
+	AutoScale         bool    `json:"auto_scale"`
 	PremiumMultiplier float64 `json:"premium_multiplier,omitempty"` // 1.0–2.0×
 	// Per-bidder timeout overrides (bidder name → timeout ms)
 	BidderOverrides map[string]int `json:"bidder_overrides,omitempty"`
@@ -1977,11 +2136,13 @@ func (h *TimeoutProfileHandler) List() httprouter.Handle { return h.store.listHa
 func (h *TimeoutProfileHandler) Create() httprouter.Handle {
 	return h.store.createHandle(func() *TimeoutProfile { return &TimeoutProfile{} })
 }
-func (h *TimeoutProfileHandler) Get() httprouter.Handle    { return h.store.getHandle("timeout profile") }
+func (h *TimeoutProfileHandler) Get() httprouter.Handle { return h.store.getHandle("timeout profile") }
 func (h *TimeoutProfileHandler) Update() httprouter.Handle {
 	return h.store.updateHandle("timeout profile", func() *TimeoutProfile { return &TimeoutProfile{} })
 }
-func (h *TimeoutProfileHandler) Delete() httprouter.Handle { return h.store.deleteHandle("timeout profile") }
+func (h *TimeoutProfileHandler) Delete() httprouter.Handle {
+	return h.store.deleteHandle("timeout profile")
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Pod Optimization Rule
@@ -2016,9 +2177,9 @@ type PodOptimizationRule struct {
 	CompSepAdvertisers []string `json:"comp_sep_advertisers,omitempty"` // domain list
 	// Pod-level optimization goal
 	// "total_yield"|"fill_rate"|"vcr"|"user_experience"
-	OptimizeFor string  `json:"optimize_for"`
-	MinFillPct  float64 `json:"min_fill_pct,omitempty"` // minimum pod fill % target (0–100)
-	Active      bool    `json:"active"`
+	OptimizeFor string    `json:"optimize_for"`
+	MinFillPct  float64   `json:"min_fill_pct,omitempty"` // minimum pod fill % target (0–100)
+	Active      bool      `json:"active"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -2078,11 +2239,15 @@ func (h *PodOptimizationRuleHandler) List() httprouter.Handle { return h.store.l
 func (h *PodOptimizationRuleHandler) Create() httprouter.Handle {
 	return h.store.createHandle(func() *PodOptimizationRule { return &PodOptimizationRule{} })
 }
-func (h *PodOptimizationRuleHandler) Get() httprouter.Handle    { return h.store.getHandle("pod optimization rule") }
+func (h *PodOptimizationRuleHandler) Get() httprouter.Handle {
+	return h.store.getHandle("pod optimization rule")
+}
 func (h *PodOptimizationRuleHandler) Update() httprouter.Handle {
 	return h.store.updateHandle("pod optimization rule", func() *PodOptimizationRule { return &PodOptimizationRule{} })
 }
-func (h *PodOptimizationRuleHandler) Delete() httprouter.Handle { return h.store.deleteHandle("pod optimization rule") }
+func (h *PodOptimizationRuleHandler) Delete() httprouter.Handle {
+	return h.store.deleteHandle("pod optimization rule")
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Supply Partner CRUD
@@ -2094,19 +2259,19 @@ func (h *PodOptimizationRuleHandler) Delete() httprouter.Handle { return h.store
 
 // SupplyPartner is the canonical record for a supply-side revenue console entity.
 type SupplyPartner struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 	// DeliveryStatus: "Live" | "Limited" | "Paused" | "Archived"
 	DeliveryStatus string `json:"delivery_status"`
 	Active         bool   `json:"active"`
 
 	// Inventory & revenue metrics — written by the serving / billing pipeline.
-	Opportunities       int64   `json:"opportunities"`
-	GrossRevenue        float64 `json:"gross_revenue"`
-	AvgQpsYesterday     int64   `json:"avg_qps_yesterday"`
-	AvgQpsLastHour      int64   `json:"avg_qps_last_hour"`
-	Impressions         int64   `json:"impressions"`
-	PublisherPayout     float64 `json:"publisher_payout"`
+	Opportunities   int64   `json:"opportunities"`
+	GrossRevenue    float64 `json:"gross_revenue"`
+	AvgQpsYesterday int64   `json:"avg_qps_yesterday"`
+	AvgQpsLastHour  int64   `json:"avg_qps_last_hour"`
+	Impressions     int64   `json:"impressions"`
+	PublisherPayout float64 `json:"publisher_payout"`
 	// VCR / Viewability raw counts — ratios are derived in the UI.
 	Completions         int64 `json:"completions"`
 	ViewableImpressions int64 `json:"viewable_impressions"`
@@ -2158,18 +2323,62 @@ func newSupplyPartnerStore(fp string) *supplyPartnerStore {
 }
 
 // SupplyPartnerHandler manages CRUD + active-toggle for SupplyPartner records.
-type SupplyPartnerHandler struct{ store *supplyPartnerStore }
+type SupplyPartnerHandler struct {
+	store         *supplyPartnerStore
+	statsProvider func() VideoStatsPayload // injected by WireVideoStats; may be nil
+}
 
 // NewSupplyPartnerHandler creates a SupplyPartnerHandler backed by a persistent store.
 func NewSupplyPartnerHandler(dataDir string) *SupplyPartnerHandler {
 	return &SupplyPartnerHandler{store: newSupplyPartnerStore(dataStorePath(dataDir, "supply_partners.json"))}
 }
 
-func (h *SupplyPartnerHandler) List() httprouter.Handle { return h.store.listHandle() }
+// SetStatsProvider injects a live-stats snapshot function so that List() can
+// overlay real-time metrics (opportunities, revenue, impressions, QPS, …) onto
+// each supply partner record keyed by partner ID == publisher_id.
+func (h *SupplyPartnerHandler) SetStatsProvider(fn func() VideoStatsPayload) { h.statsProvider = fn }
+
+// List handles GET /dashboard/supply-partners.
+// When a statsProvider is wired it overlays live pipeline metrics onto each
+// record so the Revenue Console always shows up-to-date numbers without a
+// separate stats API call.
+func (h *SupplyPartnerHandler) List() httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		entries := h.store.list()
+		if h.statsProvider != nil {
+			snap := h.statsProvider()
+			now := time.Now().Unix()
+			uptime := now - snap.StartedAt
+			if uptime < 1 {
+				uptime = 1
+			}
+			dayW := uptime
+			if dayW > 86400 {
+				dayW = 86400
+			}
+			hourW := uptime
+			if hourW > 3600 {
+				hourW = 3600
+			}
+			for _, e := range entries {
+				if vs := snap.ByPublisher[e.ID]; vs != nil {
+					// Overlay live metrics; preserve CRUD-managed fields (name, status, …)
+					e.Opportunities = vs.Opportunities
+					e.GrossRevenue = vs.Revenue
+					e.Impressions = vs.Impressions
+					e.Completions = vs.Completes
+					e.AvgQpsYesterday = vs.AdRequests / dayW
+					e.AvgQpsLastHour = vs.AdRequests / hourW
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"entries": entries})
+	}
+}
 func (h *SupplyPartnerHandler) Create() httprouter.Handle {
 	return h.store.createHandle(func() *SupplyPartner { return &SupplyPartner{} })
 }
-func (h *SupplyPartnerHandler) Get() httprouter.Handle    { return h.store.getHandle("supply partner") }
+func (h *SupplyPartnerHandler) Get() httprouter.Handle { return h.store.getHandle("supply partner") }
 func (h *SupplyPartnerHandler) Update() httprouter.Handle {
 	return h.store.updateHandle("supply partner", func() *SupplyPartner { return &SupplyPartner{} })
 }
@@ -2199,7 +2408,9 @@ func (h *SupplyPartnerHandler) Patch() httprouter.Handle {
 	}
 }
 
-func (h *SupplyPartnerHandler) Delete() httprouter.Handle { return h.store.deleteHandle("supply partner") }
+func (h *SupplyPartnerHandler) Delete() httprouter.Handle {
+	return h.store.deleteHandle("supply partner")
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Demand Partner CRUD
@@ -2211,8 +2422,8 @@ func (h *SupplyPartnerHandler) Delete() httprouter.Handle { return h.store.delet
 
 // DemandPartner is the canonical record for a demand-side revenue console entity.
 type DemandPartner struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 	// DeliveryStatus: "Live" | "Limited" | "Paused" | "Archived"
 	DeliveryStatus string `json:"delivery_status"`
 	Active         bool   `json:"active"`
@@ -2279,18 +2490,64 @@ func newDemandPartnerStore(fp string) *demandPartnerStore {
 }
 
 // DemandPartnerHandler manages CRUD + active-toggle for DemandPartner records.
-type DemandPartnerHandler struct{ store *demandPartnerStore }
+type DemandPartnerHandler struct {
+	store         *demandPartnerStore
+	statsProvider func() VideoStatsPayload // injected by WireVideoStats; may be nil
+}
 
 // NewDemandPartnerHandler creates a DemandPartnerHandler backed by a persistent store.
 func NewDemandPartnerHandler(dataDir string) *DemandPartnerHandler {
 	return &DemandPartnerHandler{store: newDemandPartnerStore(dataStorePath(dataDir, "demand_partners.json"))}
 }
 
-func (h *DemandPartnerHandler) List() httprouter.Handle { return h.store.listHandle() }
+// SetStatsProvider injects a live-stats snapshot function so that List() can
+// overlay real-time demand metrics (bid requests, bids, revenue, QPS, …) onto
+// each demand partner record keyed by partner ID == advertiser_id.
+func (h *DemandPartnerHandler) SetStatsProvider(fn func() VideoStatsPayload) { h.statsProvider = fn }
+
+// List handles GET /dashboard/demand-partners.
+// When a statsProvider is wired it overlays live pipeline metrics onto each
+// record so the Revenue Console always shows up-to-date numbers.
+func (h *DemandPartnerHandler) List() httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		entries := h.store.list()
+		if h.statsProvider != nil {
+			snap := h.statsProvider()
+			now := time.Now().Unix()
+			uptime := now - snap.StartedAt
+			if uptime < 1 {
+				uptime = 1
+			}
+			dayW := uptime
+			if dayW > 86400 {
+				dayW = 86400
+			}
+			hourW := uptime
+			if hourW > 3600 {
+				hourW = 3600
+			}
+			for _, e := range entries {
+				if vs := snap.ByAdvertiser[e.ID]; vs != nil {
+					// Bid requests = ad_requests seen by this advertiser/demand partner.
+					// Bids (fill) = opportunities (VAST/InLine returned to publisher).
+					e.BidRequests = vs.AdRequests
+					e.Bids = vs.Opportunities
+					e.Impressions = vs.Impressions
+					e.GrossRevenue = vs.Revenue
+					e.Payout = vs.Revenue // Payout = Gross Revenue
+					e.Completions = vs.Completes
+					e.AvgQpsYesterday = vs.AdRequests / dayW
+					e.AvgQpsLastHour = vs.AdRequests / hourW
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"entries": entries})
+	}
+}
 func (h *DemandPartnerHandler) Create() httprouter.Handle {
 	return h.store.createHandle(func() *DemandPartner { return &DemandPartner{} })
 }
-func (h *DemandPartnerHandler) Get() httprouter.Handle    { return h.store.getHandle("demand partner") }
+func (h *DemandPartnerHandler) Get() httprouter.Handle { return h.store.getHandle("demand partner") }
 func (h *DemandPartnerHandler) Update() httprouter.Handle {
 	return h.store.updateHandle("demand partner", func() *DemandPartner { return &DemandPartner{} })
 }
@@ -2320,7 +2577,9 @@ func (h *DemandPartnerHandler) Patch() httprouter.Handle {
 	}
 }
 
-func (h *DemandPartnerHandler) Delete() httprouter.Handle { return h.store.deleteHandle("demand partner") }
+func (h *DemandPartnerHandler) Delete() httprouter.Handle {
+	return h.store.deleteHandle("demand partner")
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Bid Report — push/pull ad-delivery events (adomain, crid, campaign_id, …)
@@ -2347,8 +2606,8 @@ type BidReportEntry struct {
 	Bidder      string `json:"bidder,omitempty"`
 
 	// OpenRTB bid-response identifiers
-	ADomain    []string `json:"adomain,omitempty"`    // advertiser domain(s)
-	CrID       string   `json:"crid,omitempty"`       // creative ID
+	ADomain    []string `json:"adomain,omitempty"`     // advertiser domain(s)
+	CrID       string   `json:"crid,omitempty"`        // creative ID
 	CampaignID string   `json:"campaign_id,omitempty"` // maps to bid.cid / bid.adid
 	DealID     string   `json:"deal_id,omitempty"`
 	CID        string   `json:"cid,omitempty"`  // buyer's campaign ID (bid.cid)
@@ -2364,7 +2623,7 @@ type BidReportEntry struct {
 	EventTime time.Time `json:"event_time"`
 
 	// Inventory environment
-	Env         string `json:"env,omitempty"`          // "ctv"|"inapp"|"web"
+	Env         string `json:"env,omitempty"` // "ctv"|"inapp"|"web"
 	AppBundle   string `json:"app_bundle,omitempty"`
 	Domain      string `json:"domain,omitempty"`
 	CountryCode string `json:"country_code,omitempty"` // ISO-3166-1 alpha-2
@@ -2422,12 +2681,12 @@ func (h *BidReportHandler) List() httprouter.Handle {
 		all := h.store.list()
 		q := r.URL.Query()
 		filterCampaign := q.Get("campaign_id")
-		filterAdomain  := q.Get("adomain")
-		filterCrID     := q.Get("crid")
-		filterBidder   := q.Get("bidder")
-		filterEvent    := q.Get("event_type")
-		filterPub      := q.Get("publisher_id")
-		filterAdUnit   := q.Get("ad_unit_id")
+		filterAdomain := q.Get("adomain")
+		filterCrID := q.Get("crid")
+		filterBidder := q.Get("bidder")
+		filterEvent := q.Get("event_type")
+		filterPub := q.Get("publisher_id")
+		filterAdUnit := q.Get("ad_unit_id")
 
 		if filterCampaign == "" && filterAdomain == "" && filterCrID == "" &&
 			filterBidder == "" && filterEvent == "" && filterPub == "" && filterAdUnit == "" {
@@ -2539,7 +2798,7 @@ type DashboardRegistry struct {
 	SupplyPartner *SupplyPartnerHandler
 	DemandPartner *DemandPartnerHandler
 	// Ad-delivery reporting (push/pull adomain, crid, campaign_id, …)
-	BidReport     *BidReportHandler
+	BidReport *BidReportHandler
 }
 
 // NewDashboardRegistry constructs all dashboard CRUD handlers with persistent
@@ -2562,6 +2821,15 @@ func NewDashboardRegistry(dataDir string) *DashboardRegistry {
 		DemandPartner:   NewDemandPartnerHandler(dataDir),
 		BidReport:       NewBidReportHandler(dataDir),
 	}
+}
+
+// WireVideoStats injects the video pipeline's live-snapshot function into the
+// SupplyPartner and DemandPartner list handlers so that GET /dashboard/supply-partners
+// and GET /dashboard/demand-partners return real-time metrics merged from the
+// serving pipeline. Call after videoPipeline is constructed and before Register.
+func (reg *DashboardRegistry) WireVideoStats(snap func() VideoStatsPayload) {
+	reg.SupplyPartner.SetStatsProvider(snap)
+	reg.DemandPartner.SetStatsProvider(snap)
 }
 
 // WireVideoExchange injects the video pipeline's ad-server registration callback
@@ -2691,7 +2959,6 @@ func (reg *DashboardRegistry) Register(r *httprouter.Router, authWrap ...func(ht
 	r.GET("/dashboard/reports", auth(reg.BidReport.List()))
 	r.GET("/dashboard/reports/:id", auth(reg.BidReport.Get()))
 	r.DELETE("/dashboard/reports/:id", auth(reg.BidReport.Delete()))
-	r.POST("/dashboard/reports", reg.BidReport.Push())           // unauthenticated: pipeline push
+	r.POST("/dashboard/reports", reg.BidReport.Push())          // unauthenticated: pipeline push
 	r.POST("/dashboard/reports/bulk", reg.BidReport.BulkPush()) // unauthenticated: batch pipeline push
 }
-
