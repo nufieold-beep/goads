@@ -763,6 +763,8 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 		AllowedBidders: e.Bidders,
 		FloorCPM:       e.FloorCPM,
 		CampaignID:     e.CampaignID,
+		Active:         e.Active,
+		TimeoutMS:      e.TimeoutMS,
 	}
 	// Populate the ad unit's placement type for ORTB imp.video.placement.
 	cfg.VideoPlacementType = string(e.Placement)
@@ -782,6 +784,14 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 			}
 			if len(camp.BCat) > 0 {
 				cfg.BCat = camp.BCat
+			}
+			// ORTB version from campaign (e.g. "2.5", "2.6").
+			if camp.OrtbVersion != "" {
+				cfg.OrtbVersion = camp.OrtbVersion
+			}
+			// Campaign-level MIME types override the default video/mp4.
+			if len(camp.MimeTypes) > 0 {
+				cfg.MimeTypes = camp.MimeTypes
 			}
 			// Store campaign protocols separately — these are the DEMAND-SIDE
 			// protocol capabilities and must NOT replace cfg.Protocols, which

@@ -93,6 +93,16 @@ type AdServerConfig struct {
 	// SeatWeights maps seat/bidder name to a weight used in tie-breaking.
 	// Higher weight wins when bids have equal price.
 	SeatWeights map[string]float64 `json:"seat_weights,omitempty"`
+	// MimeTypes lists accepted video MIME types for the OpenRTB imp.video.mimes
+	// field. Defaults to ["video/mp4"] when empty.
+	MimeTypes []string `json:"mime_types,omitempty"`
+	// Active indicates whether this placement is enabled. When false, the
+	// pipeline returns no-fill immediately without contacting demand.
+	Active bool `json:"active"`
+	// TimeoutMS is the ad-unit-level auction timeout in milliseconds.
+	// Overrides the default 500 ms when > 0; player-level TMax still takes
+	// precedence if supplied.
+	TimeoutMS int `json:"timeout_ms,omitempty"`
 	// RequestBaseURL is set per-request to the scheme+host seen by the player
 	// (e.g. "http://adzrvr.com"). Used to build self-referencing tracking URLs
 	// instead of the static external_url config value.
@@ -1032,6 +1042,12 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 			http.Error(w, "placement not found", http.StatusNotFound)
 			return
 		}
+		// Skip inactive placements — return empty VAST so producers don't
+		// accrue impressions against paused/disabled inventory.
+		if !adsCfg.Active {
+			h.writeVASTResponse(w, emptyVAST())
+			return
+		}
 		// Stamp the request's base URL so tracking pixels refer back to the
 		// same host that served this VAST (e.g. a custom domain or IP).
 		cfgCopy := *adsCfg
@@ -1136,6 +1152,11 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 		if err != nil {
 			h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusBadInput})
 			http.Error(w, "placement not found", http.StatusNotFound)
+			return
+		}
+		// Skip inactive placements.
+		if !adsCfg.Active {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		cfgCopy := *adsCfg
@@ -1616,6 +1637,7 @@ func (h *VideoPipelineHandler) resolveAdServerConfig(placementID string) (*AdSer
 	// Default permissive config — allows all bidders to compete.
 	return &AdServerConfig{
 		PlacementID: placementID,
+		Active:      true,
 		MinDuration: 5,
 		MaxDuration: 30,
 		Protocols:   []int{2, 3, 5, 6, 7, 8}, // VAST 2.0, 3.0, 2.0W, 3.0W, 4.0, 4.0W
@@ -1837,7 +1859,7 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 		Secure:      &secureVal,
 		Exp:         300, // advisory: max seconds between auction and impression serve
 		Video: &openrtb2.Video{
-			MIMEs:         []string{"video/mp4"},
+			MIMEs:         resolveMimeTypes(adsCfg.MimeTypes),
 			Linearity:     adcom1.LinearityLinear,
 			MinDuration:   int64(minDur),
 			MaxDuration:   int64(maxDur),
@@ -1884,10 +1906,20 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 		Cur: []string{"USD"},
 	}
 
+	// ── Request-level targeting ext ──────────────────────────────────────
+	if len(adsCfg.TargetingExt) > 0 {
+		if raw, err := json.Marshal(adsCfg.TargetingExt); err == nil {
+			bidReq.Ext = raw
+		}
+	}
+
 	// ── Request-level auction parameters ─────────────────────────────────
 	var tmax int64 = 500 // fallback
+	if adsCfg.TimeoutMS > 0 {
+		tmax = int64(adsCfg.TimeoutMS)
+	}
 	if pr.TMax > 0 {
-		tmax = pr.TMax
+		tmax = pr.TMax // player-level override takes precedence
 	}
 
 	bcatSeen := make(map[string]struct{})
@@ -1934,11 +1966,16 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 	bidReq.BAdv = badv
 
 	// ── App or Site context ───────────────────────────────────────────────
+	// Use adsCfg.ContentURL as fallback when the player didn't supply one.
+	contentURL := pr.ContentURL
+	if contentURL == "" {
+		contentURL = adsCfg.ContentURL
+	}
 	buildContent := func() *openrtb2.Content {
 		if pr.ContentGenre == "" && pr.ContentLang == "" &&
 			pr.ContentRating == "" && pr.ContentLen == 0 &&
 			pr.ContentTitle == "" && pr.ContentSeries == "" &&
-			pr.ContentURL == "" && pr.ContentCat == "" {
+			contentURL == "" && pr.ContentCat == "" {
 			return nil
 		}
 		lsVal := pr.LiveStream
@@ -1950,7 +1987,7 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 			Title:         pr.ContentTitle,
 			Series:        pr.ContentSeries,
 			Season:        pr.ContentSeason,
-			URL:           pr.ContentURL,
+			URL:           contentURL,
 			// prodq=1 (Professionally Produced) is the strongest positive signal:
 			// premium content commands higher CPMs from brand-safe buyers.
 			// Default to 1 when the caller does not specify (safe assumption for
@@ -2056,6 +2093,7 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 		dev := &openrtb2.Device{
 			UA:         pr.UA,
 			IP:         pr.IP,
+			IPv6:       pr.IPv6,
 			Make:       pr.DeviceMake,
 			Model:      pr.DeviceModel,
 			OS:         pr.DeviceOS,
@@ -2213,6 +2251,15 @@ func substituteMacros(demandURL string, pr *PlayerRequest, adsCfg *AdServerConfi
 		"{max_duration}", maxStr,
 	)
 	return r.Replace(demandURL)
+}
+
+// resolveMimeTypes returns the MIME type list for imp.video.mimes.
+// Falls back to ["video/mp4"] when the config has no entries.
+func resolveMimeTypes(configured []string) []string {
+	if len(configured) > 0 {
+		return configured
+	}
+	return []string{"video/mp4"}
 }
 
 // splitCSVTrim splits a comma-separated string, trims spaces, and drops empties.
