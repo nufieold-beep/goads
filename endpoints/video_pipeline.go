@@ -1106,14 +1106,6 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 			h.videoStats.incFill(adsCfg.PublisherID, resp.WinPrice)
 			h.videoStats.incAdvertiserFill(adsCfg.AdvertiserID, resp.WinPrice)
 			h.videoStats.incDimFill(adsCfg, req, resp, resolveDemandType(adsCfg))
-			// Count impression at VAST-serve time (server-side CTV/OTT model).
-			// Player-level beacon (/video/impression) still fires for audit, but
-			// the primary impression credit happens here so publishers see non-zero
-			// impressions even when the player does not fire the pixel.
-			h.videoStats.incImpression(adsCfg.PublisherID)
-			h.videoStats.incAdvertiserImpression(adsCfg.AdvertiserID)
-			h.videoStats.incDimImpression(resp.AuctionID)
-			h.metricsEng.RecordImps(metrics.ImpLabels{VideoImps: true})
 			h.recordBidReport(adsCfg, req, resp, "win")
 		}
 		h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
@@ -1255,11 +1247,6 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 			h.videoStats.incFill(adsCfg.PublisherID, resp.WinPrice)
 			h.videoStats.incAdvertiserFill(adsCfg.AdvertiserID, resp.WinPrice)
 			h.videoStats.incDimFill(adsCfg, req, resp, resolveDemandType(adsCfg))
-			// Count impression at bid-serve time (server-side CTV/OTT model).
-			h.videoStats.incImpression(adsCfg.PublisherID)
-			h.videoStats.incAdvertiserImpression(adsCfg.AdvertiserID)
-			h.videoStats.incDimImpression(resp.AuctionID)
-			h.metricsEng.RecordImps(metrics.ImpLabels{VideoImps: true})
 			h.recordBidReport(adsCfg, req, resp, "win")
 		}
 		h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
@@ -3435,6 +3422,8 @@ func (h *VideoPipelineHandler) TrackingEndpoint() httprouter.Handle {
 // ImpressionEndpoint is the dedicated handler for the VAST <Impression> beacon.
 // The VAST <Impression> tag points here (not to /video/tracking) so that
 // impression counting is cleanly separated from generic playback events.
+// This is the ONLY place impressions are counted — a firing beacon confirms
+// the player actually rendered the ad.
 //
 // Route: GET /video/impression
 func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
@@ -3465,9 +3454,13 @@ func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
 			ReceivedAt:  time.Now(),
 		})
 
-		// Impression was already credited at fill time (VASTEndpoint/ORTBEndpoint).
-		// This beacon is recorded as a tracking event for audit purposes only.
+		// Count impression only when the beacon fires (player confirmed render).
+		if cfg, err := h.resolveAdServerConfig(placementID); err == nil {
+			h.videoStats.incImpression(cfg.PublisherID)
+			h.videoStats.incAdvertiserImpression(cfg.AdvertiserID)
+		}
 		h.videoStats.incDimImpression(auctionID)
+		h.metricsEng.RecordImps(metrics.ImpLabels{VideoImps: true})
 
 		// Respond with a 1×1 transparent GIF.
 		w.Header().Set("Content-Type", "image/gif")
