@@ -1763,6 +1763,76 @@ func detectIFAType(osStr, make, model, ua string) string {
 	return "dpid"
 }
 
+// buildSUA constructs an openrtb2.UserAgent (Structured User Agent) from the
+// raw UA string, device OS, and device make. Demand partners use SUA for
+// deterministic device classification without fragile UA string parsing.
+func buildSUA(ua, osStr, make string) *openrtb2.UserAgent {
+	if ua == "" {
+		return nil
+	}
+
+	sua := &openrtb2.UserAgent{
+		Source: adcom1.UASourceParsed,
+	}
+
+	// ── Platform from OS string ──────────────────────────────────────────
+	if osStr != "" {
+		sua.Platform = &openrtb2.BrandVersion{Brand: osStr}
+	}
+
+	// ── Mobile flag: CTV / desktop = 0, mobile/tablet = 1 ───────────────
+	mobile := int8(0)
+	uaL := strings.ToLower(ua)
+	if strings.Contains(uaL, "mobile") || strings.Contains(uaL, "android") && !strings.Contains(uaL, "tv") {
+		mobile = 1
+	}
+	sua.Mobile = &mobile
+
+	// ── Extract browser brand + version from UA string ───────────────────
+	// Matches patterns like "Chrome/108.0.5359.124", "Safari/605.1.15",
+	// "CrKey/1.56", "SmartCast/2.0", etc.
+	var browsers []openrtb2.BrandVersion
+
+	// Known browser/runtime tokens to look for in the UA, ordered by
+	// specificity (CTV runtimes first, then mainstream browsers).
+	tokens := []string{
+		"CrKey", "Chromecast", "SmartCast", "Roku", "Silk", "BRAVIA",
+		"Web0S", "Tizen", "Edge", "OPR", "Chrome", "Firefox", "Safari",
+	}
+	for _, tok := range tokens {
+		idx := strings.Index(ua, tok+"/")
+		if idx < 0 {
+			continue
+		}
+		verStart := idx + len(tok) + 1 // skip "Token/"
+		verEnd := verStart
+		for verEnd < len(ua) && ua[verEnd] != ' ' && ua[verEnd] != ')' {
+			verEnd++
+		}
+		verStr := ua[verStart:verEnd]
+		// Take only the major version number.
+		if dot := strings.IndexByte(verStr, '.'); dot > 0 {
+			verStr = verStr[:dot]
+		}
+		browsers = append(browsers, openrtb2.BrandVersion{
+			Brand:   tok,
+			Version: []string{verStr},
+		})
+		break // Use the first (most specific) match.
+	}
+
+	// Fallback: use device make as brand when no browser token matched.
+	if len(browsers) == 0 && make != "" {
+		browsers = append(browsers, openrtb2.BrandVersion{Brand: make, Version: []string{"1"}})
+	}
+
+	if len(browsers) > 0 {
+		sua.Browsers = browsers
+	}
+
+	return sua
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Stage 3 — forwardToExchange
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1848,23 +1918,6 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 		protocols = []adcom1.MediaCreativeSubtype{2, 3, 5, 6, 7, 8}
 	}
 
-	// ── API frameworks ───────────────────────────────────────────────────
-	var apis []adcom1.APIFramework
-	for _, a := range adsCfg.APIs {
-		apis = append(apis, adcom1.APIFramework(a))
-	}
-	// Always include OMID 1.0 (7) — required for measurement on CTV/mobile.
-	homidPresent := false
-	for _, a := range apis {
-		if a == adcom1.APIOMID10 {
-			homidPresent = true
-			break
-		}
-	}
-	if !homidPresent {
-		apis = append(apis, adcom1.APIOMID10)
-	}
-
 	// ── Video player dimensions (publisher > default 1920×1080) ──────────
 	vidW := int64(1920)
 	if pr.Width > 0 {
@@ -1890,18 +1943,15 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 	bidFloor := adsCfg.FloorCPM
 	imp := openrtb2.Imp{
 		ID:          impID,
-		TagID:       adsCfg.PlacementID,
 		BidFloor:    bidFloor,
 		BidFloorCur: "USD",
 		Secure:      &secureVal,
-		Exp:         300, // advisory: max seconds between auction and impression serve
 		Video: &openrtb2.Video{
 			MIMEs:         resolveMimeTypes(adsCfg.MimeTypes),
 			Linearity:     adcom1.LinearityLinear,
 			MinDuration:   int64(minDur),
 			MaxDuration:   int64(maxDur),
 			Protocols:     protocols,
-			API:           apis,
 			W:             &vidW,
 			H:             &vidH,
 			StartDelay:    startDelay.Ptr(),
@@ -1909,38 +1959,16 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 			Sequence:      seqVal,
 			BoxingAllowed: &boxingVal,
 			Placement:     videoPlacementSubtype(adsCfg.VideoPlacementType),
-			Pos:           videoAdPosition(adsCfg.VideoPlacementType),
-			// MaxExtended: -1 allows DSPs to run creatives beyond MaxDuration
-			// (e.g. 5 extra seconds for outstream completion).
-			// 0 = extension not allowed (default). -1 = unlimited extension.
-			MaxExtended: -1,
 		},
 	}
 
-	// ── Imp.Ext — bidder params ───────────────────────────────────────────
-	impExtMap := map[string]json.RawMessage{}
-	adzrvrRaw, _ := json.Marshal(openrtb_ext.ImpExtAdzrvr{
-		PlacementID: adsCfg.PlacementID,
-		PublisherID: adsCfg.PublisherID,
-	})
-	for _, b := range adsCfg.AllowedBidders {
-		if b == "adzrvr" {
-			impExtMap["adzrvr"] = adzrvrRaw
-		} else {
-			impExtMap[b] = json.RawMessage(`{}`)
-		}
-	}
-	if len(impExtMap) > 0 {
-		if extRaw, mErr := jsonutil.Marshal(impExtMap); mErr == nil {
-			imp.Ext = extRaw
-		}
-	}
-
 	bidReq := &openrtb2.BidRequest{
-		ID:  auctionID,
-		Imp: []openrtb2.Imp{imp},
-		AT:  1,
-		Cur: []string{"USD"},
+		ID:      auctionID,
+		Imp:     []openrtb2.Imp{imp},
+		AT:      1,
+		Cur:     []string{"USD"},
+		AllImps: 0,
+		Ext:     json.RawMessage(`{}`),
 	}
 
 	// ── Request-level targeting ext ──────────────────────────────────────
@@ -2153,6 +2181,10 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 				dev.Ext = extRaw
 			}
 		}
+		// ── SUA (Structured User Agent) ──────────────────────────────────
+		// Build from UA parsing when available. Demand partners use SUA for
+		// accurate device classification instead of manually parsing UA.
+		dev.SUA = buildSUA(pr.UA, pr.DeviceOS, pr.DeviceMake)
 		bidReq.Device = dev
 	}
 
@@ -2179,21 +2211,24 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 		}
 		regs.GPPSID = gppSIDs
 	}
-	// When no GPP SID is supplied leave regs.GPPSID nil (omitempty).
-	// Do NOT default to [0] — section ID 0 is not a valid GPP section.
+	// Default GPPSID to [0] when not supplied — signals no active GPP section.
+	if len(regs.GPPSID) == 0 {
+		regs.GPPSID = []int8{0}
+	}
 	bidReq.Regs = regs
 
-	// ── User ─────────────────────────────────────────────────────────────
-	if pr.UserID != "" || pr.Consent != "" {
-		user := &openrtb2.User{ID: pr.UserID}
-		if pr.Consent != "" {
-			extUser := openrtb_ext.ExtUser{Consent: pr.Consent}
-			if raw, err := jsonutil.Marshal(extUser); err == nil {
-				user.Ext = raw
-			}
-		}
-		bidReq.User = user
+	// ── User (always included — demand partners expect it) ───────────────
+	user := &openrtb2.User{
+		ID:  pr.UserID,
+		Ext: json.RawMessage(`{}`),
 	}
+	if pr.Consent != "" {
+		extUser := openrtb_ext.ExtUser{Consent: pr.Consent}
+		if raw, err := jsonutil.Marshal(extUser); err == nil {
+			user.Ext = raw
+		}
+	}
+	bidReq.User = user
 
 	return bidReq
 }
