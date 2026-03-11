@@ -910,6 +910,13 @@ type vastCDATA struct {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // VideoPipelineHandler orchestrates all 7 pipeline stages.
+// pendingBURL holds a resolved billing notice URL until the impression
+// beacon fires, at which point it is sent server-side per OpenRTB 2.5 §7.2.
+type pendingBURL struct {
+	URL       string
+	ExpiresAt time.Time
+}
+
 type VideoPipelineHandler struct {
 	exchange    exchange.Exchange
 	cfg         *config.Configuration
@@ -928,6 +935,10 @@ type VideoPipelineHandler struct {
 	bufPool sync.Pool
 	// firedNURLs deduplicates NURL win-notice fires to prevent double-counting.
 	firedNURLs sync.Map
+	// pendingBURLs caches resolved BURL (billing notice) URLs so they can be
+	// fired server-side when the player confirms ad render via ImpressionEndpoint.
+	// Key: "auctionID:bidID", Value: pendingBURL.
+	pendingBURLs sync.Map
 	// done is closed by Shutdown to stop background goroutines (stats persistence).
 	done chan struct{}
 }
@@ -989,6 +1000,14 @@ func NewVideoPipelineHandler(
 				select {
 				case <-t.C:
 					vs.save()
+					// Evict expired pending BURLs to prevent unbounded memory growth.
+					now := time.Now()
+					h.pendingBURLs.Range(func(key, val any) bool {
+						if pb, ok := val.(pendingBURL); ok && now.After(pb.ExpiresAt) {
+							h.pendingBURLs.Delete(key)
+						}
+						return true
+					})
 				case <-h.done:
 					vs.save() // flush on shutdown
 					return
@@ -1220,6 +1239,15 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 				// Fire NURL server-side (spec requires the exchange to do this).
 				if resolvedNURL != "" {
 					h.fireWinNotice(resolvedNURL)
+				}
+
+				// Cache resolved BURL so ImpressionEndpoint can fire it server-side
+				// (OpenRTB 2.5 §7.2: exchange fires billing notice on billable event).
+				if resolvedBURL != "" {
+					h.pendingBURLs.Store(auctionID+":"+win.BidID, pendingBURL{
+						URL:       resolvedBURL,
+						ExpiresAt: time.Now().Add(5 * time.Minute),
+					})
 				}
 
 				// Update winning bid with resolved BURL and clear NURL to prevent client fire.
@@ -2769,6 +2797,15 @@ func (h *VideoPipelineHandler) buildVASTResponse(
 	// Resolve macros once; pass the resolved URL to all VAST builders.
 	resolvedBURL := resolveAuctionMacros(win.BURL, win, auctionID, bidder)
 
+	// Cache resolved BURL so ImpressionEndpoint can fire it server-side when
+	// the player confirms ad render (OpenRTB 2.5 §7.2: exchange-fired).
+	if resolvedBURL != "" {
+		h.pendingBURLs.Store(auctionID+":"+win.BidID, pendingBURL{
+			URL:       resolvedBURL,
+			ExpiresAt: time.Now().Add(5 * time.Minute),
+		})
+	}
+
 	reqBaseURL := adsCfg.RequestBaseURL
 	pbsImpURL := h.buildImpressionURL(reqBaseURL, auctionID, win.BidID, bidder, pr.PlacementID, win.CrID, win.Price, win.ADomain)
 
@@ -3281,7 +3318,7 @@ func resolveAuctionMacros(rawURL string, win *WinningBid, auctionID, bidder stri
 // fireWinNotice fires the NURL win notification asynchronously via HTTP GET.
 //
 // Per OpenRTB 2.5 §7.2, NURL must be called by the exchange (us) when the bid
-// wins — not by the player.  Errors are silently discarded; best-effort only.
+// wins — not by the player.  Errors are logged for observability.
 // A sync.Map dedup guard prevents the same NURL from being fired twice (e.g.
 // if a waterfall retry re-selects the same bid).
 func (h *VideoPipelineHandler) fireWinNotice(nurl string) {
@@ -3294,17 +3331,52 @@ func (h *VideoPipelineHandler) fireWinNotice(nurl string) {
 	}
 	client := h.demandClient
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, nurl, nil)
 		if err != nil {
+			log.Printf("fireWinNotice: build request error: %v", err)
 			return
 		}
 		resp, err := client.Do(req)
 		if err != nil {
+			log.Printf("fireWinNotice: HTTP error for NURL: %v", err)
 			return
 		}
 		resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			log.Printf("fireWinNotice: HTTP %d for NURL %s", resp.StatusCode, nurl)
+		}
+	}()
+}
+
+// fireBillingNotice fires the BURL billing notification asynchronously via HTTP GET.
+//
+// Per OpenRTB 2.5 §7.2, BURL must be called by the exchange when a billable
+// event occurs (ad render confirmed by player impression beacon).
+// Errors are logged for observability.
+func (h *VideoPipelineHandler) fireBillingNotice(burl string) {
+	if burl == "" {
+		return
+	}
+	client := h.demandClient
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, burl, nil)
+		if err != nil {
+			log.Printf("fireBillingNotice: build request error: %v", err)
+			return
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("fireBillingNotice: HTTP error for BURL: %v", err)
+			return
+		}
+		resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			log.Printf("fireBillingNotice: HTTP %d for BURL %s", resp.StatusCode, burl)
+		}
 	}()
 }
 
@@ -3461,6 +3533,15 @@ func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
 		}
 		h.videoStats.incDimImpression(auctionID)
 		h.metricsEng.RecordImps(metrics.ImpLabels{VideoImps: true})
+
+		// Fire demand BURL server-side (OpenRTB 2.5 §7.2: exchange fires
+		// billing notice when a billable event occurs — ad render confirmed).
+		burlKey := auctionID + ":" + bidID
+		if val, ok := h.pendingBURLs.LoadAndDelete(burlKey); ok {
+			if pb, ok := val.(pendingBURL); ok && time.Now().Before(pb.ExpiresAt) {
+				h.fireBillingNotice(pb.URL)
+			}
+		}
 
 		// Respond with a 1×1 transparent GIF.
 		w.Header().Set("Content-Type", "image/gif")
