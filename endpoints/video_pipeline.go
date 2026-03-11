@@ -20,6 +20,7 @@ package endpoints
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -1061,6 +1062,9 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 		h.videoStats.incRequest(adsCfg.PublisherID)
 		h.videoStats.incAdvertiserRequest(adsCfg.AdvertiserID)
 		resp, err := adapter.Execute(ctx, req, adsCfg)
+		if err != nil {
+			log.Printf("VASTEndpoint: primary adapter error for placement %s: %v", req.PlacementID, err)
+		}
 		if err != nil && resolveDemandType(adsCfg) != DemandTypeVAST {
 			// Waterfall: try extra demand sources in order before returning no-fill.
 			// Skipped when primary campaign uses a VAST tag (adapter handles fallback internally).
@@ -1083,11 +1087,13 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 				if err == nil {
 					break
 				}
+				log.Printf("VASTEndpoint: waterfall adapter error for placement %s: %v", req.PlacementID, err)
 			}
 		}
 		if err != nil {
 			// No fill — return an empty VAST 3.0 document so players (Roku,
 			// Fire TV, Samsung, etc.) can gracefully skip the ad slot.
+			log.Printf("VASTEndpoint: no fill for placement %s after all demand sources", req.PlacementID)
 			h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
 			h.metricsEng.RecordRequestTime(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusOK}, time.Since(start))
 			h.writeVASTResponse(w, emptyVAST())
@@ -1170,6 +1176,9 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 		h.videoStats.incRequest(adsCfg.PublisherID)
 		h.videoStats.incAdvertiserRequest(adsCfg.AdvertiserID)
 		resp, err := adapter.Execute(ctx, req, adsCfg)
+		if err != nil {
+			log.Printf("ORTBEndpoint: primary adapter error for placement %s: %v", req.PlacementID, err)
+		}
 		if err != nil && resolveDemandType(adsCfg) != DemandTypeVAST {
 			// Waterfall: try extra demand sources in order before returning no-fill.
 			// Skipped when primary campaign uses a VAST tag (adapter handles fallback internally).
@@ -1192,10 +1201,12 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 				if err == nil {
 					break
 				}
+				log.Printf("ORTBEndpoint: waterfall adapter error for placement %s: %v", req.PlacementID, err)
 			}
 		}
 		if err != nil {
 			// No fill — return empty 204
+			log.Printf("ORTBEndpoint: no fill for placement %s after all demand sources", req.PlacementID)
 			h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
 			h.metricsEng.RecordRequestTime(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusOK}, time.Since(start))
 			w.WriteHeader(http.StatusNoContent)
@@ -2336,26 +2347,58 @@ func (h *VideoPipelineHandler) postToDemandORTB(
 	if err != nil {
 		return nil, fmt.Errorf("POST to demand ORTB endpoint: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent {
-		resp.Body.Close()
 		return nil, fmt.Errorf("no fill from demand (204)")
+	}
+	// Reject non-2xx statuses from demand — the body is unlikely to be a valid
+	// BidResponse and attempting to parse it wastes CPU / creates confusing errors.
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("demand ORTB returned HTTP %d", resp.StatusCode)
+	}
+
+	// Handle gzip-compressed responses.  applyOutboundHeaders explicitly sends
+	// Accept-Encoding: gzip which disables Go's automatic decompression, so we
+	// must decompress manually when the response is gzipped.
+	var bodyReader io.Reader = resp.Body
+	if strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
+		gr := gzipReaderPool.Get().(*gzip.Reader)
+		if gerr := gr.Reset(resp.Body); gerr != nil {
+			gzipReaderPool.Put(gr)
+			gr, gerr = gzip.NewReader(resp.Body)
+			if gerr != nil {
+				return nil, fmt.Errorf("gzip reader for bid response: %w", gerr)
+			}
+		}
+		defer func() {
+			_ = gr.Close()
+			gzipReaderPool.Put(gr)
+		}()
+		bodyReader = gr
 	}
 
 	// Read body into a pooled buffer, then unmarshal.
-	// This is faster than json.NewDecoder which allocates a decoder struct and
-	// does incremental reads.
 	buf := h.bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
-	_, copyErr := io.Copy(buf, io.LimitReader(resp.Body, 1<<20)) // 1 MB cap
-	resp.Body.Close()
+	_, copyErr := io.Copy(buf, io.LimitReader(bodyReader, 1<<20)) // 1 MB cap
 	if copyErr != nil {
 		h.bufPool.Put(buf)
 		return nil, fmt.Errorf("read bid response: %w", copyErr)
 	}
-	var bidResp openrtb2.BidResponse
-	if err := json.Unmarshal(sanitizeBidResponse(buf.Bytes()), &bidResp); err != nil {
+	rawBody := buf.Bytes()
+	if len(rawBody) == 0 {
 		h.bufPool.Put(buf)
+		return nil, fmt.Errorf("demand ORTB returned empty body (HTTP %d)", resp.StatusCode)
+	}
+	var bidResp openrtb2.BidResponse
+	if err := json.Unmarshal(sanitizeBidResponse(rawBody), &bidResp); err != nil {
+		preview := string(rawBody)
+		if len(preview) > 200 {
+			preview = preview[:200] + "..."
+		}
+		h.bufPool.Put(buf)
+		log.Printf("postToDemandORTB: decode error: %v — body preview: %s", err, preview)
 		return nil, fmt.Errorf("decode bid response: %w", err)
 	}
 	h.bufPool.Put(buf)
