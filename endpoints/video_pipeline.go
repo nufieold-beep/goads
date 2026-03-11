@@ -939,6 +939,10 @@ type VideoPipelineHandler struct {
 	// fired server-side when the player confirms ad render via ImpressionEndpoint.
 	// Key: "auctionID:bidID", Value: pendingBURL.
 	pendingBURLs sync.Map
+	// firedImpressions deduplicates impression beacon fires so the same
+	// auction_id:bid_id pair is only counted once (prevents double-count from
+	// VAST wrapper chains or player retries).
+	firedImpressions sync.Map
 	// done is closed by Shutdown to stop background goroutines (stats persistence).
 	done chan struct{}
 }
@@ -1005,6 +1009,13 @@ func NewVideoPipelineHandler(
 					h.pendingBURLs.Range(func(key, val any) bool {
 						if pb, ok := val.(pendingBURL); ok && now.After(pb.ExpiresAt) {
 							h.pendingBURLs.Delete(key)
+						}
+						return true
+					})
+					// Evict expired impression dedup entries (>10 min old).
+					h.firedImpressions.Range(func(key, val any) bool {
+						if t, ok := val.(time.Time); ok && now.Sub(t) > 10*time.Minute {
+							h.firedImpressions.Delete(key)
 						}
 						return true
 					})
@@ -3475,20 +3486,26 @@ func (h *VideoPipelineHandler) TrackingEndpoint() httprouter.Handle {
 			h.videoStats.incDimComplete(ev.AuctionID)
 		}
 
-		// Respond with a 1×1 transparent GIF so players treating this as
-		// an image pixel don't fail.
-		w.Header().Set("Content-Type", "image/gif")
-		w.WriteHeader(http.StatusOK)
-		// Minimal 1×1 transparent GIF bytes
-		w.Write([]byte{
-			0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00,
-			0x01, 0x00, 0x80, 0x00, 0x00, 0xff, 0xff, 0xff,
-			0x00, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00,
-			0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44,
-			0x01, 0x00, 0x3b,
-		}) //nolint:errcheck
+		h.servePixelGIF(w)
 	}
+}
+
+// servePixelGIF writes a 1×1 transparent GIF response to w.
+// Used by tracking and impression beacon endpoints.
+var pixelGIF = []byte{
+	0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00,
+	0x01, 0x00, 0x80, 0x00, 0x00, 0xff, 0xff, 0xff,
+	0x00, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00,
+	0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44,
+	0x01, 0x00, 0x3b,
+}
+
+func (h *VideoPipelineHandler) servePixelGIF(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "image/gif")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.WriteHeader(http.StatusOK)
+	w.Write(pixelGIF) //nolint:errcheck
 }
 
 // ImpressionEndpoint is the dedicated handler for the VAST <Impression> beacon.
@@ -3508,6 +3525,22 @@ func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
 			http.Error(w, "auction_id and bid_id are required", http.StatusBadRequest)
 			return
 		}
+
+		// Dedup: only count each impression once per auction_id:bid_id.
+		// VAST wrapper chains and player retries can fire the same
+		// <Impression> URL multiple times — skip duplicates.
+		impKey := auctionID + ":" + bidID
+		if _, loaded := h.firedImpressions.LoadOrStore(impKey, time.Now()); loaded {
+			// Already counted — still return the GIF pixel but don't double-count.
+			log.Printf("ImpressionEndpoint: duplicate beacon for auction=%s bid=%s from %s — skipped", auctionID, bidID, extractClientIP(r))
+			h.servePixelGIF(w)
+			return
+		}
+
+		// Log the impression source for verification (client IP + UA).
+		clientIP := extractClientIP(r)
+		ua := r.UserAgent()
+		log.Printf("ImpressionEndpoint: beacon fired auction=%s bid=%s placement=%s from ip=%s ua=%s", auctionID, bidID, placementID, clientIP, ua)
 
 		// Record a TrackingEvent so the events log stays complete.
 		priceVal := 0.0
@@ -3543,17 +3576,7 @@ func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
 			}
 		}
 
-		// Respond with a 1×1 transparent GIF.
-		w.Header().Set("Content-Type", "image/gif")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte{
-			0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00,
-			0x01, 0x00, 0x80, 0x00, 0x00, 0xff, 0xff, 0xff,
-			0x00, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00,
-			0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44,
-			0x01, 0x00, 0x3b,
-		}) //nolint:errcheck
+		h.servePixelGIF(w)
 	}
 }
 
