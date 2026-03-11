@@ -915,6 +915,8 @@ type VideoPipelineHandler struct {
 	// bufPool reuses byte buffers across requests to eliminate per-request
 	// heap allocations for VAST XML and JSON response serialization.
 	bufPool sync.Pool
+	// firedNURLs deduplicates NURL win-notice fires to prevent double-counting.
+	firedNURLs sync.Map
 	// done is closed by Shutdown to stop background goroutines (stats persistence).
 	done chan struct{}
 }
@@ -950,6 +952,7 @@ func NewVideoPipelineHandler(
 			New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 4096)) },
 		},
 		demandClient: &http.Client{
+			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
 				DialContext: (&net.Dialer{
 					Timeout:   1 * time.Second,
@@ -3202,8 +3205,14 @@ func resolveAuctionMacros(rawURL string, win *WinningBid, auctionID, bidder stri
 //
 // Per OpenRTB 2.5 §7.2, NURL must be called by the exchange (us) when the bid
 // wins — not by the player.  Errors are silently discarded; best-effort only.
+// A sync.Map dedup guard prevents the same NURL from being fired twice (e.g.
+// if a waterfall retry re-selects the same bid).
 func (h *VideoPipelineHandler) fireWinNotice(nurl string) {
 	if nurl == "" {
+		return
+	}
+	// Dedup: skip if this exact NURL was already fired during this process lifetime.
+	if _, loaded := h.firedNURLs.LoadOrStore(nurl, struct{}{}); loaded {
 		return
 	}
 	client := h.demandClient

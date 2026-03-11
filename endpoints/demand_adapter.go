@@ -272,9 +272,18 @@ func (a *ortbToVASTAdapter) Execute(
 		emptyResp := vastXMLToBidResponseWithPrice(emptyVAST(), 0)
 		return &DemandResponse{BidResp: emptyResp, WinPrice: 0, NoFill: true}, nil
 	}
+	// Inject PBS impression + quartile/complete beacons so VCR and impression
+	// stats are recorded for ORTB-inbound VAST-tag demand (mirrors vastToVASTAdapter).
+	auctionID := fastGenerateID()
+	bidID := fastGenerateID()
+	reqBaseURL := cfg.RequestBaseURL
+	pbsImpURL := a.h.buildImpressionURL(reqBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
+	trackingEvts := a.h.buildTrackingEventList(reqBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
+	vastXML = injectVASTImpression(vastXML, pbsImpURL)
+	vastXML = injectVASTTracking(vastXML, trackingEvts)
 	bidResp := vastXMLToBidResponseWithPrice(vastXML, cfg.FloorCPM)
 	// fixed CPM from config applies to VAST-tag demand
-	return &DemandResponse{BidResp: bidResp, WinPrice: cfg.FloorCPM}, nil
+	return &DemandResponse{BidResp: bidResp, WinPrice: cfg.FloorCPM, AuctionID: auctionID}, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
