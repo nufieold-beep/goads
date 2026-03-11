@@ -353,13 +353,18 @@ func NewDashboardLoginPostHandler() httprouter.Handle {
 		dashSessions[token] = time.Now().Add(dashSessionTTL)
 		dashSessionsMu.Unlock()
 		go saveDashSessions()
+		isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+		sameSite := http.SameSiteLaxMode
+		if isSecure {
+			sameSite = http.SameSiteStrictMode
+		}
 		http.SetCookie(w, &http.Cookie{
 			Name:     dashSessionCookie,
 			Value:    token,
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   true,
-			SameSite: http.SameSiteStrictMode,
+			Secure:   isSecure,
+			SameSite: sameSite,
 			MaxAge:   int(dashSessionTTL.Seconds()),
 		})
 		if strings.Contains(ct, "application/json") {
