@@ -24,6 +24,7 @@ import (
 	"github.com/prebid/prebid-server/v4/experiment/adscert"
 	"github.com/prebid/prebid-server/v4/floors"
 	"github.com/prebid/prebid-server/v4/gdpr"
+	"github.com/prebid/go-gdpr/vendorlist"
 	"github.com/prebid/prebid-server/v4/hooks"
 	"github.com/prebid/prebid-server/v4/logger"
 	"github.com/prebid/prebid-server/v4/macros"
@@ -247,16 +248,25 @@ func New(cfg *config.Configuration, rateConvertor *currency.RateConverter) (r *R
 	defReqJSON := readDefaultRequest(cfg.DefReqConfig)
 
 	gvlVendorIDs := cfg.BidderInfos.ToGVLVendorIDMap()
-	vendorListFetcher := gdpr.NewVendorListFetcher(context.Background(), cfg.GDPR, generalHttpClient, r.MetricsEngine, gdpr.VendorListURLMaker)
 	liveGVLVendorIDs := gdpr.NewLiveGVLVendorIDs()
-	refreshInterval := time.Duration(cfg.GDPR.LiveGVLRefreshInterval) * time.Second
-	gvlVendorIDTask := gdpr.NewGVLVendorIDTickerTask(refreshInterval, generalHttpClient, gdpr.VendorListURLMaker, liveGVLVendorIDs, r.MetricsEngine)
-	gvlVendorIDTask.Start()
+
+	var vendorListFetcher gdpr.VendorListFetcher
+	if cfg.GDPR.Enabled {
+		vendorListFetcher = gdpr.NewVendorListFetcher(context.Background(), cfg.GDPR, generalHttpClient, r.MetricsEngine, gdpr.VendorListURLMaker)
+		refreshInterval := time.Duration(cfg.GDPR.LiveGVLRefreshInterval) * time.Second
+		gvlVendorIDTask := gdpr.NewGVLVendorIDTickerTask(refreshInterval, generalHttpClient, gdpr.VendorListURLMaker, liveGVLVendorIDs, r.MetricsEngine)
+		gvlVendorIDTask.Start()
+		r.shutdowns = append(r.shutdowns, gvlVendorIDTask.Stop)
+	} else {
+		vendorListFetcher = func(ctx context.Context, specVersion uint16, listVersion uint16, me metrics.MetricsEngine) (vendorlist.VendorList, error) {
+			return nil, nil
+		}
+	}
 	gdprPermsBuilder := gdpr.NewPermissionsBuilder(cfg.GDPR, gvlVendorIDs, liveGVLVendorIDs, vendorListFetcher, r.MetricsEngine)
 	tcf2CfgBuilder := gdpr.NewTCF2Config
 
-	// register the analytics runner, modules and live GVL Vendor ID ticker task for shutdown
-	r.shutdowns = append(r.shutdowns, shutdown, analyticsRunner.Shutdown, shutdownModules.Shutdown, gvlVendorIDTask.Stop)
+	// register the analytics runner, modules for shutdown
+	r.shutdowns = append(r.shutdowns, shutdown, analyticsRunner.Shutdown, shutdownModules.Shutdown)
 
 	cacheClient := pbc.NewClient(cacheHttpClient, &cfg.CacheURL, &cfg.ExtCacheURL, r.MetricsEngine)
 
