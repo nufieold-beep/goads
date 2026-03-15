@@ -153,7 +153,7 @@ func (a *vastToVASTAdapter) Execute(
 	if err != nil {
 		return nil, err
 	}
-	winPrice := cfg.FloorCPM
+	winPrice := cfg.outboundBidFloorCPM()
 	if noFill {
 		winPrice = 0
 	}
@@ -256,7 +256,7 @@ func (a *ortbToVASTAdapter) Execute(
 	if err != nil {
 		return nil, err
 	}
-	winPrice := cfg.FloorCPM
+	winPrice := cfg.outboundBidFloorCPM()
 	if noFill {
 		winPrice = 0
 	}
@@ -364,8 +364,9 @@ func (h *VideoPipelineHandler) fetchTrackedVASTDemand(
 	auctionID = fastGenerateID()
 	bidID := fastGenerateID()
 	requestBaseURL := cfg.RequestBaseURL
-	pbsImpressionURL := h.buildImpressionURL(requestBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
-	trackingEvents := h.buildTrackingEventList(requestBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", cfg.FloorCPM, nil)
+	salePriceCPM := cfg.outboundBidFloorCPM()
+	pbsImpressionURL := h.buildImpressionURL(requestBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", salePriceCPM, nil)
+	trackingEvents := h.buildTrackingEventList(requestBaseURL, auctionID, bidID, "direct-vast", pr.PlacementID, "", salePriceCPM, nil)
 	vastXML = injectVASTImpression(vastXML, pbsImpressionURL)
 	vastXML = injectVASTTracking(vastXML, trackingEvents)
 	return vastXML, auctionID, false, nil
