@@ -168,7 +168,7 @@ func TestSupplyPartnerListBuildsFromPublisherMasterData(t *testing.T) {
 	handler.SetStatsProvider(func() VideoStatsPayload {
 		return VideoStatsPayload{
 			ByPublisher: map[string]*VideoStats{
-				"pub-master-1": {AdRequests: 7200, Opportunities: 10, Impressions: 5},
+				"pub-master-1": {AdRequests: 7200, Opportunities: 10, Impressions: 5, PublisherRevenue: 1.25},
 			},
 			PublisherRequestsLastDay: map[string]int64{
 				"pub-master-1": 86400,
@@ -205,6 +205,9 @@ func TestSupplyPartnerListBuildsFromPublisherMasterData(t *testing.T) {
 	}
 	if payload.Entries[0].AvgQpsYesterday != 1 || payload.Entries[0].AvgQpsLastHour != 1 {
 		t.Fatalf("expected live stats overlay on synced publisher entry, got %+v", payload.Entries[0])
+	}
+	if payload.Entries[0].PublisherPayout != 1.25 {
+		t.Fatalf("expected publisher payout 1.25 from live publisher revenue, got %v", payload.Entries[0].PublisherPayout)
 	}
 }
 

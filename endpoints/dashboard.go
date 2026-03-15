@@ -2608,6 +2608,7 @@ func (h *SupplyPartnerHandler) List() httprouter.Handle {
 					// Overlay live metrics; preserve CRUD-managed fields (name, status, …)
 					e.Opportunities = vs.Opportunities
 					e.GrossRevenue = vs.Revenue
+					e.PublisherPayout = vs.PublisherRevenue
 					e.Impressions = vs.Impressions
 					e.Completions = vs.Completes
 					e.AvgQpsYesterday = qpsFromRecentRequests(snap.PublisherRequestsLastDay, e.ID, 86400, vs.AdRequests, dayWindowSeconds)
