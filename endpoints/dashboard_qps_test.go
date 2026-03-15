@@ -60,6 +60,56 @@ func TestSupplyPartnerListUsesRecentRequestWindowsForAvgQPS(t *testing.T) {
 	}
 }
 
+func TestSupplyPartnerListUsesFixedWindowSecondsForRecentQPS(t *testing.T) {
+	handler := NewSupplyPartnerHandler("")
+	created := handler.store.create(&SupplyPartner{
+		Name:           "Publisher Fixed Window",
+		DeliveryStatus: "Live",
+		Active:         true,
+	})
+	handler.SetStatsProvider(func() VideoStatsPayload {
+		return VideoStatsPayload{
+			ByPublisher: map[string]*VideoStats{
+				created.ID: {AdRequests: 86400, Opportunities: 10, Impressions: 5},
+			},
+			PublisherRequestsLastDay: map[string]int64{
+				created.ID: 86400,
+			},
+			PublisherRequestsLastHour: map[string]int64{
+				created.ID: 3600,
+			},
+			StartedAt: time.Now().Add(-30 * time.Minute).Unix(),
+		}
+	})
+
+	req := httptest.NewRequest("GET", "/dashboard/supply-partners", nil)
+	recorder := httptest.NewRecorder()
+	handler.List()(recorder, req, httprouter.Params{})
+
+	if recorder.Code != 200 {
+		t.Fatalf("expected 200 OK, got %d with body %s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Entries []*SupplyPartner `json:"entries"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(payload.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(payload.Entries))
+	}
+	if payload.Entries[0].AvgQpsYesterday != 1 {
+		t.Fatalf("expected avg qps yesterday 1 using full 24h window, got %d", payload.Entries[0].AvgQpsYesterday)
+	}
+	if payload.Entries[0].AvgQpsLastHour != 1 {
+		t.Fatalf("expected avg qps last hour 1 using full 1h window, got %d", payload.Entries[0].AvgQpsLastHour)
+	}
+	if payload.Entries[0].AvgQpsYesterday == 48 || payload.Entries[0].AvgQpsLastHour == 2 {
+		t.Fatalf("expected fixed recent windows, not uptime-clamped division")
+	}
+}
+
 func TestDemandPartnerListFallsBackToCumulativeRequestsWithoutRecentWindows(t *testing.T) {
 	handler := NewDemandPartnerHandler("")
 	created := handler.store.create(&DemandPartner{

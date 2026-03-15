@@ -2513,16 +2513,19 @@ func statsWindowSeconds(startedAt int64) (dayWindowSeconds, hourWindowSeconds in
 	return dayWindowSeconds, hourWindowSeconds
 }
 
-func qpsFromRecentRequests(recentRequests map[string]int64, entityID string, fallbackRequests, windowSeconds int64) int64 {
-	if windowSeconds < 1 {
-		windowSeconds = 1
-	}
+func qpsFromRecentRequests(recentRequests map[string]int64, entityID string, recentWindowSeconds, fallbackRequests, fallbackWindowSeconds int64) int64 {
 	if recentRequests != nil {
 		if recent, ok := recentRequests[entityID]; ok {
-			return recent / windowSeconds
+			if recentWindowSeconds < 1 {
+				recentWindowSeconds = 1
+			}
+			return recent / recentWindowSeconds
 		}
 	}
-	return fallbackRequests / windowSeconds
+	if fallbackWindowSeconds < 1 {
+		fallbackWindowSeconds = 1
+	}
+	return fallbackRequests / fallbackWindowSeconds
 }
 
 // List handles GET /dashboard/supply-partners.
@@ -2542,8 +2545,8 @@ func (h *SupplyPartnerHandler) List() httprouter.Handle {
 					e.GrossRevenue = vs.Revenue
 					e.Impressions = vs.Impressions
 					e.Completions = vs.Completes
-					e.AvgQpsYesterday = qpsFromRecentRequests(snap.PublisherRequestsLastDay, e.ID, vs.AdRequests, dayWindowSeconds)
-					e.AvgQpsLastHour = qpsFromRecentRequests(snap.PublisherRequestsLastHour, e.ID, vs.AdRequests, hourWindowSeconds)
+					e.AvgQpsYesterday = qpsFromRecentRequests(snap.PublisherRequestsLastDay, e.ID, 86400, vs.AdRequests, dayWindowSeconds)
+					e.AvgQpsLastHour = qpsFromRecentRequests(snap.PublisherRequestsLastHour, e.ID, 3600, vs.AdRequests, hourWindowSeconds)
 				}
 			}
 		}
@@ -2699,8 +2702,8 @@ func (h *DemandPartnerHandler) List() httprouter.Handle {
 					e.GrossRevenue = vs.Revenue
 					e.Payout = vs.Revenue // Payout = Gross Revenue
 					e.Completions = vs.Completes
-					e.AvgQpsYesterday = qpsFromRecentRequests(snap.AdvertiserRequestsLastDay, e.ID, vs.AdRequests, dayWindowSeconds)
-					e.AvgQpsLastHour = qpsFromRecentRequests(snap.AdvertiserRequestsLastHour, e.ID, vs.AdRequests, hourWindowSeconds)
+					e.AvgQpsYesterday = qpsFromRecentRequests(snap.AdvertiserRequestsLastDay, e.ID, 86400, vs.AdRequests, dayWindowSeconds)
+					e.AvgQpsLastHour = qpsFromRecentRequests(snap.AdvertiserRequestsLastHour, e.ID, 3600, vs.AdRequests, hourWindowSeconds)
 				}
 			}
 		}
