@@ -22,7 +22,7 @@ GO_VERSION="1.24.0"
 INSTALL_DIR="/opt/prebid-server"
 SERVICE_NAME="prebid-server"
 BINARY_NAME="prebid-server"
-REPO_URL="https://github.com/nufieold-beep/goads.git"
+REPO_URL="https://github.com/viadsmedia/ortb5.git"
 GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
 GO_URL="https://dl.google.com/go/${GO_TARBALL}"
 
