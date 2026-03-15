@@ -1396,6 +1396,8 @@ func (h *PublisherHandler) Update() httprouter.Handle {
 }
 func (h *PublisherHandler) Delete() httprouter.Handle { return h.store.deleteHandle("publisher") }
 
+func (h *PublisherHandler) Store() *publisherStore { return h.store }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Advertiser CRUD
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1455,6 +1457,8 @@ func (h *AdvertiserHandler) Update() httprouter.Handle {
 	return h.store.updateHandle("advertiser", func() *Advertiser { return &Advertiser{} })
 }
 func (h *AdvertiserHandler) Delete() httprouter.Handle { return h.store.deleteHandle("advertiser") }
+
+func (h *AdvertiserHandler) Store() *advertiserStore { return h.store }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Domain List CRUD
@@ -2484,6 +2488,7 @@ func newSupplyPartnerStore(fp string) *supplyPartnerStore {
 type SupplyPartnerHandler struct {
 	store         *supplyPartnerStore
 	statsProvider func() VideoStatsPayload // injected by WireVideoStats; may be nil
+	publisherList func() []*Publisher
 }
 
 // NewSupplyPartnerHandler creates a SupplyPartnerHandler backed by a persistent store.
@@ -2495,6 +2500,8 @@ func NewSupplyPartnerHandler(dataDir string) *SupplyPartnerHandler {
 // overlay real-time metrics (opportunities, revenue, impressions, QPS, …) onto
 // each supply partner record keyed by partner ID == publisher_id.
 func (h *SupplyPartnerHandler) SetStatsProvider(fn func() VideoStatsPayload) { h.statsProvider = fn }
+
+func (h *SupplyPartnerHandler) SetPublisherListProvider(fn func() []*Publisher) { h.publisherList = fn }
 
 func statsWindowSeconds(startedAt int64) (dayWindowSeconds, hourWindowSeconds int64) {
 	nowUnix := time.Now().Unix()
@@ -2528,13 +2535,71 @@ func qpsFromRecentRequests(recentRequests map[string]int64, entityID string, rec
 	return fallbackRequests / fallbackWindowSeconds
 }
 
+func deliveryStatusFromMasterStatus(status string) string {
+	if strings.EqualFold(strings.TrimSpace(status), "paused") {
+		return "Paused"
+	}
+	return "Live"
+}
+
+func (h *SupplyPartnerHandler) listEntries() []*SupplyPartner {
+	entries := h.store.list()
+	if h.publisherList == nil {
+		return entries
+	}
+	publishers := h.publisherList()
+	if len(publishers) == 0 {
+		return entries
+	}
+	entriesByID := make(map[string]*SupplyPartner, len(entries))
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		copyEntry := *entry
+		entriesByID[entry.ID] = &copyEntry
+	}
+	merged := make([]*SupplyPartner, 0, len(publishers)+len(entries))
+	seen := make(map[string]struct{}, len(publishers))
+	for _, publisher := range publishers {
+		if publisher == nil {
+			continue
+		}
+		entry := &SupplyPartner{}
+		if existing := entriesByID[publisher.ID]; existing != nil {
+			*entry = *existing
+		}
+		entry.ID = publisher.ID
+		entry.Name = publisher.Name
+		entry.DeliveryStatus = deliveryStatusFromMasterStatus(publisher.Status)
+		entry.Active = strings.EqualFold(strings.TrimSpace(publisher.Status), "active")
+		if entry.CreatedAt.IsZero() {
+			entry.CreatedAt = publisher.CreatedAt
+		}
+		entry.UpdatedAt = publisher.UpdatedAt
+		merged = append(merged, entry)
+		seen[publisher.ID] = struct{}{}
+	}
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		if _, ok := seen[entry.ID]; ok {
+			continue
+		}
+		copyEntry := *entry
+		merged = append(merged, &copyEntry)
+	}
+	return merged
+}
+
 // List handles GET /dashboard/supply-partners.
 // When a statsProvider is wired it overlays live pipeline metrics onto each
 // record so the Revenue Console always shows up-to-date numbers without a
 // separate stats API call.
 func (h *SupplyPartnerHandler) List() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-		entries := h.store.list()
+		entries := h.listEntries()
 		if h.statsProvider != nil {
 			snap := h.statsProvider()
 			dayWindowSeconds, hourWindowSeconds := statsWindowSeconds(snap.StartedAt)
@@ -2669,8 +2734,9 @@ func newDemandPartnerStore(fp string) *demandPartnerStore {
 
 // DemandPartnerHandler manages CRUD + active-toggle for DemandPartner records.
 type DemandPartnerHandler struct {
-	store         *demandPartnerStore
-	statsProvider func() VideoStatsPayload // injected by WireVideoStats; may be nil
+	store          *demandPartnerStore
+	statsProvider  func() VideoStatsPayload // injected by WireVideoStats; may be nil
+	advertiserList func() []*Advertiser
 }
 
 // NewDemandPartnerHandler creates a DemandPartnerHandler backed by a persistent store.
@@ -2683,12 +2749,67 @@ func NewDemandPartnerHandler(dataDir string) *DemandPartnerHandler {
 // each demand partner record keyed by partner ID == advertiser_id.
 func (h *DemandPartnerHandler) SetStatsProvider(fn func() VideoStatsPayload) { h.statsProvider = fn }
 
+func (h *DemandPartnerHandler) SetAdvertiserListProvider(fn func() []*Advertiser) {
+	h.advertiserList = fn
+}
+
+func (h *DemandPartnerHandler) listEntries() []*DemandPartner {
+	entries := h.store.list()
+	if h.advertiserList == nil {
+		return entries
+	}
+	advertisers := h.advertiserList()
+	if len(advertisers) == 0 {
+		return entries
+	}
+	entriesByID := make(map[string]*DemandPartner, len(entries))
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		copyEntry := *entry
+		entriesByID[entry.ID] = &copyEntry
+	}
+	merged := make([]*DemandPartner, 0, len(advertisers)+len(entries))
+	seen := make(map[string]struct{}, len(advertisers))
+	for _, advertiser := range advertisers {
+		if advertiser == nil {
+			continue
+		}
+		entry := &DemandPartner{}
+		if existing := entriesByID[advertiser.ID]; existing != nil {
+			*entry = *existing
+		}
+		entry.ID = advertiser.ID
+		entry.Name = advertiser.Name
+		entry.DeliveryStatus = deliveryStatusFromMasterStatus(advertiser.Status)
+		entry.Active = strings.EqualFold(strings.TrimSpace(advertiser.Status), "active")
+		if entry.CreatedAt.IsZero() {
+			entry.CreatedAt = advertiser.CreatedAt
+		}
+		entry.UpdatedAt = advertiser.UpdatedAt
+		merged = append(merged, entry)
+		seen[advertiser.ID] = struct{}{}
+	}
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		if _, ok := seen[entry.ID]; ok {
+			continue
+		}
+		copyEntry := *entry
+		merged = append(merged, &copyEntry)
+	}
+	return merged
+}
+
 // List handles GET /dashboard/demand-partners.
 // When a statsProvider is wired it overlays live pipeline metrics onto each
 // record so the Revenue Console always shows up-to-date numbers.
 func (h *DemandPartnerHandler) List() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-		entries := h.store.list()
+		entries := h.listEntries()
 		if h.statsProvider != nil {
 			snap := h.statsProvider()
 			dayWindowSeconds, hourWindowSeconds := statsWindowSeconds(snap.StartedAt)
@@ -3123,6 +3244,11 @@ func NewDashboardRegistry(dataDir string) *DashboardRegistry {
 func (reg *DashboardRegistry) WireVideoStats(snap func() VideoStatsPayload) {
 	reg.SupplyPartner.SetStatsProvider(snap)
 	reg.DemandPartner.SetStatsProvider(snap)
+}
+
+func (reg *DashboardRegistry) WireRevenueConsoleMasters() {
+	reg.SupplyPartner.SetPublisherListProvider(func() []*Publisher { return reg.Publisher.Store().list() })
+	reg.DemandPartner.SetAdvertiserListProvider(func() []*Advertiser { return reg.Advertiser.Store().list() })
 }
 
 // WireVideoExchange injects the video pipeline's ad-server registration callback

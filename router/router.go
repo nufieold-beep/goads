@@ -146,12 +146,12 @@ func (rl *rateLimiter) handle(w http.ResponseWriter, r *http.Request, ps httprou
 
 type Router struct {
 	*httprouter.Router
-	MetricsEngine   *metricsConf.DetailedMetricsEngine
-	ParamsValidator openrtb_ext.BidderParamValidator
-	cfg             *config.Configuration
-	videoPipeline   *endpoints.VideoPipelineHandler
-	fastStatus      fasthttp.RequestHandler
-	versionResponse []byte
+	MetricsEngine    *metricsConf.DetailedMetricsEngine
+	ParamsValidator  openrtb_ext.BidderParamValidator
+	cfg              *config.Configuration
+	videoPipeline    *endpoints.VideoPipelineHandler
+	fastStatus       fasthttp.RequestHandler
+	versionResponse  []byte
 	fastHTTPFallback fasthttp.RequestHandler
 	fastAdRequestSem chan struct{}
 
@@ -421,6 +421,7 @@ func New(cfg *config.Configuration, rateConverter *currency.RateConverter) (r *R
 	// all dashboard routes (auth-protected) via the central registry.
 	dashReg.WireVideoExchange(videoPipeline.RegisterAdServerConfig, videoPipeline.UnregisterAdServerConfig)
 	dashReg.WireVideoStats(videoPipeline.Snapshot)
+	dashReg.WireRevenueConsoleMasters()
 	dashReg.Register(r.Router, auth)
 
 	// Dashboard – External Statistics API proxy (admin-only, HTTPS only)
