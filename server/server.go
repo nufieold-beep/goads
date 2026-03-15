@@ -31,7 +31,6 @@ func Listen(cfg *config.Configuration, handler http.Handler, adminHandler http.H
 	stopPrometheus := make(chan os.Signal)
 	stopChannels := []chan<- os.Signal{stopMain}
 	done := make(chan struct{})
-	useFast := os.Getenv("USE_FASTHTTP") == "1"
 
 	if cfg.UnixSocketEnable && len(cfg.UnixSocketName) > 0 { // start the unix_socket server if config enable-it.
 		addr := cfg.UnixSocketName
@@ -41,15 +40,9 @@ func Listen(cfg *config.Configuration, handler http.Handler, adminHandler http.H
 			logger.Errorf("Error listening for Unix-Socket connections on path %s: %v for socket server", addr, err)
 			return
 		}
-		if useFast {
-			fsrv := newFastHTTPServer(handler, cfg.Compression.Response)
-			go shutdownAfterSignalsFast(fsrv, stopMain, done)
-			go runFastHTTPServer(fsrv, "UnixSocket", socketListener)
-		} else {
-			mainServer := newSocketServer(cfg, handler)
-			go shutdownAfterSignals(mainServer, stopMain, done)
-			go runServer(mainServer, "UnixSocket", socketListener)
-		}
+		fsrv := newFastHTTPServer(handler, cfg.Compression.Response)
+		go shutdownAfterSignalsFast(fsrv, stopMain, done)
+		go runFastHTTPServer(fsrv, "UnixSocket", socketListener)
 	} else { // start the TCP server
 		addr := cfg.Host + ":" + strconv.Itoa(cfg.Port)
 		var mainListener net.Listener
@@ -58,28 +51,23 @@ func Listen(cfg *config.Configuration, handler http.Handler, adminHandler http.H
 			logger.Errorf("Error listening for TCP connections on %s: %v for main server", addr, err)
 			return
 		}
-		if useFast {
-			fsrv := newFastHTTPServer(handler, cfg.Compression.Response)
-			go shutdownAfterSignalsFast(fsrv, stopMain, done)
-			go runFastHTTPServer(fsrv, "Main", mainListener)
-		} else {
-			mainServer := newMainServer(cfg, handler)
-			go shutdownAfterSignals(mainServer, stopMain, done)
-			go runServer(mainServer, "Main", mainListener)
-		}
+		fsrv := newFastHTTPServer(handler, cfg.Compression.Response)
+		go shutdownAfterSignalsFast(fsrv, stopMain, done)
+		go runFastHTTPServer(fsrv, "Main", mainListener)
 	}
 
 	if cfg.Admin.Enabled {
 		stopChannels = append(stopChannels, stopAdmin)
 		adminServer := newAdminServer(cfg, adminHandler)
-		go shutdownAfterSignals(adminServer, stopAdmin, done)
+		adminFastServer := newFastHTTPServer(adminServer.Handler, config.CompressionInfo{})
+		go shutdownAfterSignalsFast(adminFastServer, stopAdmin, done)
 
 		var adminListener net.Listener
 		if adminListener, err = newTCPListener(adminServer.Addr, nil); err != nil {
 			logger.Errorf("Error listening for TCP connections on %s: %v for admin server", adminServer.Addr, err)
 			return
 		}
-		go runServer(adminServer, "Admin", adminListener)
+		go runFastHTTPServer(adminFastServer, "Admin", adminListener)
 	}
 
 	if cfg.Metrics.Prometheus.Port != 0 {
@@ -88,13 +76,14 @@ func Listen(cfg *config.Configuration, handler http.Handler, adminHandler http.H
 			prometheusServer   = newPrometheusServer(cfg, metrics)
 		)
 		stopChannels = append(stopChannels, stopPrometheus)
-		go shutdownAfterSignals(prometheusServer, stopPrometheus, done)
+		prometheusFastServer := newFastHTTPServer(prometheusServer.Handler, config.CompressionInfo{})
+		go shutdownAfterSignalsFast(prometheusFastServer, stopPrometheus, done)
 		if prometheusListener, err = newTCPListener(prometheusServer.Addr, nil); err != nil {
 			logger.Errorf("Error listening for TCP connections on %s: %v for prometheus server", prometheusServer.Addr, err)
 			return
 		}
 
-		go runServer(prometheusServer, "Prometheus", prometheusListener)
+		go runFastHTTPServer(prometheusFastServer, "Prometheus", prometheusListener)
 	}
 
 	wait(stopSignals, done, stopChannels...)
@@ -129,9 +118,18 @@ func newMainServer(cfg *config.Configuration, handler http.Handler) *http.Server
 }
 
 func newFastHTTPServer(handler http.Handler, compressionInfo config.CompressionInfo) *fasthttp.Server {
-	wrapped := getCompressionEnabledHandler(handler, compressionInfo)
+	var fastHandler fasthttp.RequestHandler
+	if provider, ok := handler.(interface{ FastHTTPHandler() fasthttp.RequestHandler }); ok {
+		fastHandler = provider.FastHTTPHandler()
+	} else {
+		wrapped := getCompressionEnabledHandler(handler, compressionInfo)
+		fastHandler = fasthttpadaptor.NewFastHTTPHandler(wrapped)
+	}
+	if compressionInfo.GZIP {
+		fastHandler = fasthttp.CompressHandler(fastHandler)
+	}
 	return &fasthttp.Server{
-		Handler:            fasthttpadaptor.NewFastHTTPHandler(wrapped),
+		Handler:            fastHandler,
 		ReadTimeout:        10 * time.Second,
 		WriteTimeout:       10 * time.Second,
 		IdleTimeout:        120 * time.Second,

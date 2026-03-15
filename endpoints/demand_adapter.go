@@ -107,6 +107,9 @@ func resolveDemandType(cfg *AdServerConfig) DemandType {
 // adapterRouter returns the correct DemandAdapter for the given RouterKey.
 // Unknown combinations fall back to the Prebid VAST adapter.
 func (h *VideoPipelineHandler) adapterRouter(key RouterKey) DemandAdapter {
+	if h.adapterRouterFn != nil {
+		return h.adapterRouterFn(key)
+	}
 	switch key {
 	case RouterKey{InboundVAST, DemandTypeVAST}:
 		return &vastToVASTAdapter{h: h}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"net/http"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/prebid/prebid-server/v4/openrtb_ext"
 	"github.com/prebid/prebid-server/v4/router"
 	"github.com/prebid/prebid-server/v4/server"
+	"github.com/prebid/prebid-server/v4/util/fasthttpclient"
 	"github.com/prebid/prebid-server/v4/util/jsonutil"
 	"github.com/prebid/prebid-server/v4/util/task"
 
@@ -69,7 +69,17 @@ func serve(cfg *config.Configuration) error {
 	httpTimeout := time.Duration(cfg.CurrencyConverter.FetchTimeoutMilliseconds) * time.Millisecond
 	fetchingInterval := time.Duration(cfg.CurrencyConverter.FetchIntervalSeconds) * time.Second
 	staleRatesThreshold := time.Duration(cfg.CurrencyConverter.StaleRatesSeconds) * time.Second
-	currencyConverter := currency.NewRateConverter(&http.Client{}, httpTimeout, cfg.CurrencyConverter.FetchURL, staleRatesThreshold)
+	currencyConverter := currency.NewRateConverter(fasthttpclient.NewClient(httpTimeout, fasthttpclient.TransportConfig{
+		Name:                "pbs-currency",
+		DialTimeout:         httpTimeout,
+		KeepAlive:           30 * time.Second,
+		MaxConnsPerHost:     256,
+		MaxIdleConnDuration: 90 * time.Second,
+		ReadTimeout:         httpTimeout,
+		WriteTimeout:        httpTimeout,
+		ReadBufferSize:      8192,
+		WriteBufferSize:     8192,
+	}), httpTimeout, cfg.CurrencyConverter.FetchURL, staleRatesThreshold)
 
 	currencyConverterTickerTask := task.NewTickerTask(fetchingInterval, currencyConverter)
 	currencyConverterTickerTask.Start()
@@ -79,8 +89,7 @@ func serve(cfg *config.Configuration) error {
 		return err
 	}
 
-	corsRouter := router.SupportCORS(r)
-	if err := server.Listen(cfg, router.NoCache{Handler: corsRouter}, router.Admin(currencyConverter, fetchingInterval), r.MetricsEngine); err != nil {
+	if err := server.Listen(cfg, r, router.Admin(currencyConverter, fetchingInterval), r.MetricsEngine); err != nil {
 		logger.Fatalf("prebid-server returned an error: %v", err)
 	}
 

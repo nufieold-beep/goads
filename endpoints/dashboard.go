@@ -21,6 +21,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/prebid/prebid-server/v4/metrics"
 	metricsConf "github.com/prebid/prebid-server/v4/metrics/config"
+	"github.com/prebid/prebid-server/v4/util/fasthttpclient"
 )
 
 var (
@@ -162,7 +163,17 @@ func NewDashboardStatsHandler(metricsEngine *metricsConf.DetailedMetricsEngine) 
 // The client supplies the fully-constructed URL in the JSON body {"url":"https://..."}.
 // Only HTTPS URLs are accepted to limit SSRF exposure on the admin-only dashboard.
 func NewExtStatsFetchHandler() httprouter.Handle {
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := fasthttpclient.NewClient(15*time.Second, fasthttpclient.TransportConfig{
+		Name:                "dashboard-ext-stats",
+		DialTimeout:         2 * time.Second,
+		KeepAlive:           30 * time.Second,
+		MaxConnsPerHost:     128,
+		MaxIdleConnDuration: 60 * time.Second,
+		ReadTimeout:         15 * time.Second,
+		WriteTimeout:        15 * time.Second,
+		ReadBufferSize:      8192,
+		WriteBufferSize:     8192,
+	})
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		var proxyRequest struct {
 			URL string `json:"url"`
@@ -276,8 +287,12 @@ func isValidDashSession(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
+	return isValidDashSessionToken(c.Value)
+}
+
+func isValidDashSessionToken(token string) bool {
 	dashSessionsMu.RLock()
-	exp, ok := dashSessions[c.Value]
+	exp, ok := dashSessions[token]
 	dashSessionsMu.RUnlock()
 	return ok && time.Now().Before(exp)
 }

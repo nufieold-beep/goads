@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/prebid/prebid-server/v4/config"
 	"github.com/prebid/prebid-server/v4/logger"
 	"github.com/prebid/prebid-server/v4/usersync"
+	"github.com/prebid/prebid-server/v4/util/fasthttpclient"
 )
 
 // Recaptcha code from https://github.com/haisum/recaptcha/blob/master/recaptcha.go
@@ -34,14 +36,18 @@ type googleResponse struct {
 }
 
 func (deps *UserSyncDeps) VerifyRecaptcha(response string) error {
-	ts := &http.Transport{
-		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: &tls.Config{RootCAs: deps.CertPool},
-	}
-
-	client := &http.Client{
-		Transport: ts,
-	}
+	client := fasthttpclient.NewClient(10*time.Second, fasthttpclient.TransportConfig{
+		Name:                "usersync-recaptcha",
+		DialTimeout:         2 * time.Second,
+		KeepAlive:           30 * time.Second,
+		MaxConnsPerHost:     64,
+		MaxIdleConnDuration: 60 * time.Second,
+		ReadTimeout:         10 * time.Second,
+		WriteTimeout:        10 * time.Second,
+		TLSConfig:           &tls.Config{RootCAs: deps.CertPool},
+		ReadBufferSize:      8192,
+		WriteBufferSize:     8192,
+	})
 	resp, err := client.PostForm(RECAPTCHA_URL,
 		url.Values{"secret": {deps.RecaptchaSecret}, "response": {response}})
 	if err != nil {

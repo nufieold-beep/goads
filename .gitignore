@@ -74,3 +74,10 @@ tmp_*
 
 # Data directory (runtime state, sessions, stats)
 /data/
+
+# Local runtime artifacts and generated binaries
+/logs/
+/bin/
+/storage_analytics_smoke
+/deploy.tar.gz
+/prebid-server-new

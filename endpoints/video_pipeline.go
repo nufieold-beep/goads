@@ -51,6 +51,7 @@ import (
 	"github.com/prebid/prebid-server/v4/metrics"
 	cleanrtb "github.com/prebid/prebid-server/v4/openrtb"
 	"github.com/prebid/prebid-server/v4/openrtb_ext"
+	"github.com/prebid/prebid-server/v4/util/fasthttpclient"
 	"github.com/prebid/prebid-server/v4/util/jsonutil"
 	"runtime/debug"
 )
@@ -59,12 +60,16 @@ import (
 // Used on hot paths to prevent log flooding under production QPS.
 var logSampleCounters sync.Map
 
-func logSampled(n int64, format string, args ...interface{}) {
-	key := format
-	val, _ := logSampleCounters.LoadOrStore(key, new(int64))
+func shouldLogSampled(format string, n int64) (int64, bool) {
+	val, _ := logSampleCounters.LoadOrStore(format, new(int64))
 	counter := val.(*int64)
 	cur := atomic.AddInt64(counter, 1)
-	if cur == 1 || cur%n == 0 {
+	return cur, cur == 1 || cur%n == 0
+}
+
+func logSampled(n int64, format string, args ...interface{}) {
+	cur, emit := shouldLogSampled(format, n)
+	if emit {
 		log.Printf(format+" [sampled 1/%d, count=%d]", append(args, n, cur)...)
 	}
 }
@@ -387,15 +392,46 @@ type TrackingEvent struct {
 	ReceivedAt  time.Time `json:"received_at"`
 }
 
+type trackingEventCode uint8
+
+const (
+	trackingEventCustom trackingEventCode = iota
+	trackingEventImpression
+	trackingEventStart
+	trackingEventFirstQuartile
+	trackingEventMidpoint
+	trackingEventThirdQuartile
+	trackingEventComplete
+	trackingEventClick
+)
+
+type trackingEventRecord struct {
+	seq              int64
+	AuctionID        string
+	BidID            string
+	Bidder           string
+	PlacementID      string
+	Event            trackingEventCode
+	Price            float64
+	ReceivedAtUnixNs int64
+}
+
+type trackingEventExtras struct {
+	CrID        string
+	ADomain     string
+	CustomEvent EventType
+}
+
 // trackingStore persists tracking events in a fixed-size ring buffer.
 // The ring avoids slice shifts and keeps the hot-path record() O(1)
 // with minimal lock hold time.
 type trackingStore struct {
-	mu    sync.RWMutex
-	ring  []TrackingEvent
-	pos   int
-	full  bool
-	count int64 // total events ever recorded (atomic for stats)
+	mu     sync.RWMutex
+	ring   []trackingEventRecord
+	extras map[int64]trackingEventExtras
+	pos    int
+	full   bool
+	count  int64
 }
 
 const trackingStoreMaxEvents = 100_000
@@ -403,16 +439,40 @@ const trackingStoreMaxEvents = 100_000
 func (t *trackingStore) record(ev TrackingEvent) {
 	t.mu.Lock()
 	if t.ring == nil {
-		t.ring = make([]TrackingEvent, trackingStoreMaxEvents)
+		t.ring = make([]trackingEventRecord, trackingStoreMaxEvents)
 	}
-	t.ring[t.pos] = ev
+	t.count++
+	seq := t.count
+	if oldSeq := t.ring[t.pos].seq; oldSeq != 0 && t.extras != nil {
+		delete(t.extras, oldSeq)
+	}
+	code, customEvent := trackingEventCodeFromEventType(ev.Event)
+	t.ring[t.pos] = trackingEventRecord{
+		seq:              seq,
+		AuctionID:        ev.AuctionID,
+		BidID:            ev.BidID,
+		Bidder:           ev.Bidder,
+		PlacementID:      ev.PlacementID,
+		Event:            code,
+		Price:            ev.Price,
+		ReceivedAtUnixNs: ev.ReceivedAt.UnixNano(),
+	}
+	if ev.CrID != "" || ev.ADomain != "" || customEvent != "" {
+		if t.extras == nil {
+			t.extras = make(map[int64]trackingEventExtras)
+		}
+		t.extras[seq] = trackingEventExtras{
+			CrID:        ev.CrID,
+			ADomain:     ev.ADomain,
+			CustomEvent: customEvent,
+		}
+	}
 	t.pos++
 	if t.pos >= trackingStoreMaxEvents {
 		t.pos = 0
 		t.full = true
 	}
 	t.mu.Unlock()
-	atomic.AddInt64(&t.count, 1)
 }
 
 func (t *trackingStore) all() []TrackingEvent {
@@ -432,12 +492,83 @@ func (t *trackingStore) all() []TrackingEvent {
 	}
 	cp := make([]TrackingEvent, n)
 	if t.full {
-		copy(cp, t.ring[t.pos:])
-		copy(cp[trackingStoreMaxEvents-t.pos:], t.ring[:t.pos])
+		for i := 0; i < trackingStoreMaxEvents-t.pos; i++ {
+			cp[i] = t.expand(t.ring[t.pos+i])
+		}
+		for i := 0; i < t.pos; i++ {
+			cp[trackingStoreMaxEvents-t.pos+i] = t.expand(t.ring[i])
+		}
 	} else {
-		copy(cp, t.ring[:t.pos])
+		for i := 0; i < t.pos; i++ {
+			cp[i] = t.expand(t.ring[i])
+		}
 	}
 	return cp
+}
+
+func (t *trackingStore) expand(rec trackingEventRecord) TrackingEvent {
+	ev := TrackingEvent{
+		AuctionID:   rec.AuctionID,
+		BidID:       rec.BidID,
+		Bidder:      rec.Bidder,
+		PlacementID: rec.PlacementID,
+		Event:       trackingEventType(rec.Event),
+		Price:       rec.Price,
+		ReceivedAt:  time.Unix(0, rec.ReceivedAtUnixNs),
+	}
+	if rec.seq == 0 || t.extras == nil {
+		return ev
+	}
+	if extra, ok := t.extras[rec.seq]; ok {
+		ev.CrID = extra.CrID
+		ev.ADomain = extra.ADomain
+		if extra.CustomEvent != "" {
+			ev.Event = extra.CustomEvent
+		}
+	}
+	return ev
+}
+
+func trackingEventCodeFromEventType(event EventType) (trackingEventCode, EventType) {
+	switch event {
+	case EventImpression:
+		return trackingEventImpression, ""
+	case EventStart:
+		return trackingEventStart, ""
+	case EventFirstQuartile:
+		return trackingEventFirstQuartile, ""
+	case EventMidpoint:
+		return trackingEventMidpoint, ""
+	case EventThirdQuartile:
+		return trackingEventThirdQuartile, ""
+	case EventComplete:
+		return trackingEventComplete, ""
+	case EventClick:
+		return trackingEventClick, ""
+	default:
+		return trackingEventCustom, event
+	}
+}
+
+func trackingEventType(code trackingEventCode) EventType {
+	switch code {
+	case trackingEventImpression:
+		return EventImpression
+	case trackingEventStart:
+		return EventStart
+	case trackingEventFirstQuartile:
+		return EventFirstQuartile
+	case trackingEventMidpoint:
+		return EventMidpoint
+	case trackingEventThirdQuartile:
+		return EventThirdQuartile
+	case trackingEventComplete:
+		return EventComplete
+	case trackingEventClick:
+		return EventClick
+	default:
+		return ""
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1119,6 +1250,77 @@ type pendingBURL struct {
 	ExpiresAt time.Time
 }
 
+type impressionKey struct {
+	AuctionID string
+	BidID     string
+}
+
+const impressionDeduperShardCount = 64
+
+type impressionDeduperShard struct {
+	mu   sync.Mutex
+	seen map[impressionKey]int64
+}
+
+type impressionDeduper struct {
+	shards [impressionDeduperShardCount]impressionDeduperShard
+}
+
+func newImpressionDeduper() *impressionDeduper {
+	d := &impressionDeduper{}
+	for i := range d.shards {
+		d.shards[i].seen = make(map[impressionKey]int64)
+	}
+	return d
+}
+
+func (d *impressionDeduper) SeenOrAdd(key impressionKey, seenAtUnix int64) bool {
+	shard := d.shard(key)
+	shard.mu.Lock()
+	_, exists := shard.seen[key]
+	if !exists {
+		shard.seen[key] = seenAtUnix
+	}
+	shard.mu.Unlock()
+	return exists
+}
+
+func (d *impressionDeduper) CleanupBefore(cutoffUnix int64) {
+	for i := range d.shards {
+		shard := &d.shards[i]
+		shard.mu.Lock()
+		for key, seenAt := range shard.seen {
+			if seenAt < cutoffUnix {
+				delete(shard.seen, key)
+			}
+		}
+		shard.mu.Unlock()
+	}
+}
+
+func (d *impressionDeduper) shard(key impressionKey) *impressionDeduperShard {
+	return &d.shards[hashImpressionKey(key)&(impressionDeduperShardCount-1)]
+}
+
+func hashImpressionKey(key impressionKey) uint64 {
+	const (
+		offset64 = 1469598103934665603
+		prime64  = 1099511628211
+	)
+	h := uint64(offset64)
+	for i := 0; i < len(key.AuctionID); i++ {
+		h ^= uint64(key.AuctionID[i])
+		h *= prime64
+	}
+	h ^= ':'
+	h *= prime64
+	for i := 0; i < len(key.BidID); i++ {
+		h ^= uint64(key.BidID[i])
+		h *= prime64
+	}
+	return h
+}
+
 type VideoPipelineHandler struct {
 	exchange    exchange.Exchange
 	cfg         *config.Configuration
@@ -1136,16 +1338,17 @@ type VideoPipelineHandler struct {
 	// bufPool reuses byte buffers across requests to eliminate per-request
 	// heap allocations for VAST XML and JSON response serialization.
 	bufPool sync.Pool
+	adapterRouterFn func(RouterKey) DemandAdapter
 	// firedNURLs deduplicates NURL win-notice fires to prevent double-counting.
 	firedNURLs sync.Map
 	// pendingBURLs caches resolved BURL (billing notice) URLs so they can be
 	// fired server-side when the player confirms ad render via ImpressionEndpoint.
-	// Key: "auctionID:bidID", Value: pendingBURL.
+	// Key: impressionKey, Value: pendingBURL.
 	pendingBURLs sync.Map
 	// firedImpressions deduplicates impression beacon fires so the same
 	// auction_id:bid_id pair is only counted once (prevents double-count from
 	// VAST wrapper chains or player retries).
-	firedImpressions sync.Map
+	firedImpressions *impressionDeduper
 	// done is closed by Shutdown to stop background goroutines (stats persistence).
 	done chan struct{}
 }
@@ -1181,26 +1384,19 @@ func NewVideoPipelineHandler(
 		bufPool: sync.Pool{
 			New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 4096)) },
 		},
-		demandClient: &http.Client{
-			Timeout: 8 * time.Second,
-			Transport: &http.Transport{
-				DialContext: (&net.Dialer{
-					Timeout:   800 * time.Millisecond,
-					KeepAlive: 30 * time.Second,
-				}).DialContext,
-				MaxIdleConns:          2048,
-				MaxIdleConnsPerHost:   512,
-				MaxConnsPerHost:       1024,
-				IdleConnTimeout:       90 * time.Second,
-				TLSHandshakeTimeout:   2 * time.Second,
-				ExpectContinueTimeout: 500 * time.Millisecond,
-				ForceAttemptHTTP2:     true,
-				ResponseHeaderTimeout: 5 * time.Second,
-				WriteBufferSize:       8192,
-				ReadBufferSize:        8192,
-				TLSClientConfig:       &tls.Config{InsecureSkipVerify: os.Getenv("PBS_INSECURE_TLS") == "1"}, //nolint:gosec
-			},
-		},
+		demandClient: fasthttpclient.NewClient(8*time.Second, fasthttpclient.TransportConfig{
+			Name:                "video-demand",
+			DialTimeout:         800 * time.Millisecond,
+			KeepAlive:           30 * time.Second,
+			MaxConnsPerHost:     1024,
+			MaxIdleConnDuration: 90 * time.Second,
+			ReadTimeout:         5 * time.Second,
+			WriteTimeout:        2 * time.Second,
+			TLSConfig:           &tls.Config{InsecureSkipVerify: os.Getenv("PBS_INSECURE_TLS") == "1"}, //nolint:gosec
+			ReadBufferSize:      8192,
+			WriteBufferSize:     8192,
+		}),
+		firedImpressions: newImpressionDeduper(),
 		done: make(chan struct{}),
 	}
 	// Persist stats to disk every 30 seconds; stops on Shutdown.
@@ -1219,12 +1415,7 @@ func NewVideoPipelineHandler(
 						}
 						return true
 					})
-					h.firedImpressions.Range(func(key, val any) bool {
-						if t, ok := val.(time.Time); ok && now.Sub(t) > 10*time.Minute {
-							h.firedImpressions.Delete(key)
-						}
-						return true
-					})
+					h.firedImpressions.CleanupBefore(now.Add(-10 * time.Minute).Unix())
 					h.firedNURLs.Range(func(key, val any) bool {
 						if t, ok := val.(time.Time); ok && now.Sub(t) > 10*time.Minute {
 							h.firedNURLs.Delete(key)
@@ -1283,17 +1474,17 @@ func (h *VideoPipelineHandler) runDemandWaterfall(
 	adsCfg *AdServerConfig,
 	inbound InboundProtocol,
 ) (*DemandResponse, error) {
-	sources := h.buildDemandSources(adsCfg, inbound)
-
-	// Fast path — single source, no concurrency needed.
-	if len(sources) == 1 {
-		resp, err := sources[0].adapter.Execute(ctx, req, sources[0].cfg)
+	if len(adsCfg.ExtraDemand) == 0 {
+		primaryAdapter := h.adapterRouter(RouterKey{inbound, resolveDemandType(adsCfg)})
+		resp, err := primaryAdapter.Execute(ctx, req, adsCfg)
 		if err != nil {
-			log.Printf("runDemandWaterfall: %s adapter error for placement %s: %v",
-				sources[0].label, req.PlacementID, err)
+			log.Printf("runDemandWaterfall: primary adapter error for placement %s: %v",
+				req.PlacementID, err)
 		}
 		return resp, err
 	}
+
+	sources := h.buildDemandSources(adsCfg, inbound)
 
 	// Fire all demand sources in parallel.
 	ch := make(chan demandResult, len(sources))
@@ -1354,7 +1545,7 @@ func (h *VideoPipelineHandler) buildDemandSources(
 	adsCfg *AdServerConfig,
 	inbound InboundProtocol,
 ) []demandSource {
-	var sources []demandSource
+	sources := make([]demandSource, 0, 1+len(adsCfg.ExtraDemand))
 
 	// Primary demand.
 	primaryAdapter := h.adapterRouter(RouterKey{inbound, resolveDemandType(adsCfg)})
@@ -1380,7 +1571,7 @@ func (h *VideoPipelineHandler) buildDemandSources(
 		cfgCopy := extraCfg       // heap-allocate for goroutine safety
 		extraAdapter := h.adapterRouter(RouterKey{inbound, resolveDemandType(&cfgCopy)})
 		sources = append(sources, demandSource{
-			cfg: &cfgCopy, adapter: extraAdapter, label: fmt.Sprintf("extra-%d", i),
+			cfg: &cfgCopy, adapter: extraAdapter, label: "extra-" + strconv.Itoa(i),
 		})
 	}
 	return sources
@@ -1405,6 +1596,22 @@ func resolveEndpointTimeout(adsCfg *AdServerConfig, pr *PlayerRequest) time.Dura
 		total = 3 * time.Second
 	}
 	return total
+}
+
+func withResolvedTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	if timeout <= 0 {
+		return parent, func() {}
+	}
+	if deadline, ok := parent.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining > 0 && remaining <= timeout {
+			return parent, func() {}
+		}
+	}
+	return context.WithTimeout(parent, timeout)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1446,7 +1653,7 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 		cfgCopy.RequestBaseURL = requestBaseURL(r)
 		adsCfg = &cfgCopy
 
-		ctx, cancel := context.WithTimeout(r.Context(), resolveEndpointTimeout(adsCfg, req))
+		ctx, cancel := withResolvedTimeout(r.Context(), resolveEndpointTimeout(adsCfg, req))
 		defer cancel()
 
 		// ── Stages 3-6: demand routing via waterfall ─────────────────────
@@ -1516,7 +1723,7 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 		cfgCopy.RequestBaseURL = requestBaseURL(r)
 		adsCfg = &cfgCopy
 
-		ctx, cancel := context.WithTimeout(r.Context(), resolveEndpointTimeout(adsCfg, req))
+		ctx, cancel := withResolvedTimeout(r.Context(), resolveEndpointTimeout(adsCfg, req))
 		defer cancel()
 
 		// ── Stages 3-5: demand routing via waterfall ─────────────────────
@@ -1556,7 +1763,7 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 				// The exchange fires BURL (OpenRTB 2.5 §7.2), not the
 				// downstream caller, so it is blanked from the response.
 				if resolvedBURL != "" {
-					h.pendingBURLs.Store(auctionID+":"+win.BidID, pendingBURL{
+					h.pendingBURLs.Store(impressionKey{AuctionID: auctionID, BidID: win.BidID}, pendingBURL{
 						URL:       resolvedBURL,
 						ExpiresAt: time.Now().Add(5 * time.Minute),
 					})
@@ -2740,7 +2947,6 @@ func splitCSVTrim(s string) []string {
 // Writing directly avoids allocating the intermediate http.Header map.
 func applyOutboundHeaders(httpReq *http.Request, bidReq *openrtb2.BidRequest, ortbVersion string) {
 	httpReq.Header.Set("Content-Type", "application/json;charset=utf-8")
-	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("Accept-Encoding", "gzip")
 	httpReq.Header.Set("Connection", "keep-alive")
 	if ortbVersion == "" {
@@ -2750,15 +2956,14 @@ func applyOutboundHeaders(httpReq *http.Request, bidReq *openrtb2.BidRequest, or
 	if bidReq.Device != nil {
 		if bidReq.Device.UA != "" {
 			httpReq.Header.Set("User-Agent", bidReq.Device.UA)
+			httpReq.Header.Set("X-Device-User-Agent", bidReq.Device.UA)
 		}
 		if bidReq.Device.IP != "" {
 			httpReq.Header.Set("X-Forwarded-For", bidReq.Device.IP)
+			httpReq.Header.Set("X-Device-IP", bidReq.Device.IP)
 		} else if bidReq.Device.IPv6 != "" {
 			httpReq.Header.Set("X-Forwarded-For", bidReq.Device.IPv6)
 		}
-	}
-	if bidReq.Site != nil && bidReq.Site.Page != "" {
-		httpReq.Header.Set("Referer", bidReq.Site.Page)
 	}
 }
 
@@ -2987,15 +3192,6 @@ type WinningBid struct {
 	ADomain []string // Advertiser domains
 }
 
-// bidCandidate is used internally by extractWinningBid for tie-break sorting.
-type bidCandidate struct {
-	win    WinningBid
-	weight float64
-	pos    int    // response order index — proxy for seat latency
-	key    string // stable sort key: seat + ":" + bid.ID
-	seat   string
-}
-
 // extractWinningBid picks the best bid from the BidResponse using a
 // 4-level tie-break rule:
 //
@@ -3013,7 +3209,12 @@ func (h *VideoPipelineHandler) extractWinningBid(
 		return nil, "", fmt.Errorf("nil bid response")
 	}
 
-	var best *bidCandidate
+	var bestBid *openrtb2.Bid
+	var bestAdM string
+	var bestSeat string
+	var bestWeight float64
+	var bestPos int
+	hasBest := false
 	pos := 0
 	// Auction transparency counters
 	totalBids := 0
@@ -3029,10 +3230,10 @@ func (h *VideoPipelineHandler) extractWinningBid(
 		}
 		for i := range seatBid.Bid {
 			bid := &seatBid.Bid[i]
+			adm := normalizeAdM(bid.AdM)
 			pos++
 			totalBids++
-			bid.AdM = normalizeAdM(bid.AdM)
-			if bid.AdM == "" && bid.NURL == "" {
+			if adm == "" && bid.NURL == "" {
 				emptyAdM++
 				continue
 			}
@@ -3041,57 +3242,52 @@ func (h *VideoPipelineHandler) extractWinningBid(
 				belowFloor++
 				continue
 			}
-			c := &bidCandidate{
-				win: WinningBid{
-					BidID:   bid.ID,
-					AdM:     bid.AdM,
-					NURL:    bid.NURL,
-					BURL:    bid.BURL,
-					Price:   bid.Price,
-					Width:   bid.W,
-					Height:  bid.H,
-					CrID:    bid.CrID,
-					DealID:  bid.DealID,
-					ADomain: bid.ADomain,
-				},
-				weight: seatWeight,
-				pos:    pos,
-				key:    seatBid.Seat + ":" + bid.ID,
-				seat:   seatBid.Seat,
-			}
-			if best == nil || bidCandidateBetter(c, best) {
-				best = c
+			if !hasBest || bidBetter(bid.Price, seatWeight, pos, bestBid.Price, bestWeight, bestPos) {
+				bestBid = bid
+				bestAdM = adm
+				bestSeat = seatBid.Seat
+				bestWeight = seatWeight
+				bestPos = pos
+				hasBest = true
 			}
 		}
 	}
 
 	// Structured auction log for transparency: shows all candidates + outcome.
-	if best != nil {
+	if hasBest {
 		logSampled(100, "auction id=%s bids=%d empty=%d floor_reject=%d winner=%s seat=%s price=%.4f",
-			resp.ID, totalBids, emptyAdM, belowFloor, best.win.BidID, best.seat, best.win.Price)
+			resp.ID, totalBids, emptyAdM, belowFloor, bestBid.ID, bestSeat, bestBid.Price)
 	} else {
 		logSampled(100, "auction id=%s bids=%d empty=%d floor_reject=%d winner=none",
 			resp.ID, totalBids, emptyAdM, belowFloor)
 	}
 
-	if best == nil {
+	if !hasBest {
 		return nil, "", fmt.Errorf("no fill: %d bids, %d empty AdM, %d below floor", totalBids, emptyAdM, belowFloor)
 	}
-	return &best.win, best.seat, nil
+	win := &WinningBid{
+		BidID:   bestBid.ID,
+		AdM:     bestAdM,
+		NURL:    bestBid.NURL,
+		BURL:    bestBid.BURL,
+		Price:   bestBid.Price,
+		Width:   bestBid.W,
+		Height:  bestBid.H,
+		CrID:    bestBid.CrID,
+		DealID:  bestBid.DealID,
+		ADomain: bestBid.ADomain,
+	}
+	return win, bestSeat, nil
 }
 
-// bidCandidateBetter returns true when a beats b under the 4-level tie-break rule.
-func bidCandidateBetter(a, b *bidCandidate) bool {
-	if a.win.Price != b.win.Price {
-		return a.win.Price > b.win.Price
+func bidBetter(price, weight float64, pos int, bestPrice, bestWeight float64, bestPos int) bool {
+	if price != bestPrice {
+		return price > bestPrice
 	}
-	if a.weight != b.weight {
-		return a.weight > b.weight
+	if weight != bestWeight {
+		return weight > bestWeight
 	}
-	if a.pos != b.pos {
-		return a.pos < b.pos // lower index = earlier = faster
-	}
-	return a.key < b.key // lexicographic stable key
+	return pos < bestPos
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3113,8 +3309,18 @@ func isEmptyAdM(adm string) bool {
 	if trim == "" {
 		return true
 	}
-	switch strings.ToLower(trim) {
-	case "null", "none", "empty", "n/a", "na", "0":
+	switch {
+	case trim == "0":
+		return true
+	case strings.EqualFold(trim, "null"):
+		return true
+	case strings.EqualFold(trim, "none"):
+		return true
+	case strings.EqualFold(trim, "empty"):
+		return true
+	case strings.EqualFold(trim, "n/a"):
+		return true
+	case strings.EqualFold(trim, "na"):
 		return true
 	default:
 		return false
@@ -4088,43 +4294,52 @@ func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
 			http.Error(w, "auction_id and bid_id are required", http.StatusBadRequest)
 			return
 		}
+		key := impressionKey{AuctionID: auctionID, BidID: bidID}
+		now := time.Now()
 
 		// Dedup: only count each impression once per auction_id:bid_id.
 		// VAST wrapper chains and player retries can fire the same
 		// <Impression> URL multiple times — skip duplicates.
-		impKey := auctionID + ":" + bidID
-		if _, loaded := h.firedImpressions.LoadOrStore(impKey, time.Now()); loaded {
+		if h.firedImpressions.SeenOrAdd(key, now.Unix()) {
 			// Already counted — still return the GIF pixel but don't double-count.
 			logSampled(50, "ImpressionEndpoint: duplicate beacon for auction=%s bid=%s from %s — skipped", auctionID, bidID, maskIP(extractClientIP(r)))
 			h.servePixelGIF(w)
 			return
 		}
 
+		// Credit dimension stats first so cached bidder/placement/price can be
+		// reused without re-reading query parameters on the hot path.
+		dk := h.videoStats.incDimImpression(auctionID)
+		bidder := q.Get("bidder")
+		if dk != nil && dk.Bidder != "" {
+			bidder = dk.Bidder
+		}
+		if dk != nil && dk.Placement != "" {
+			placementID = dk.Placement
+		}
+		priceVal := 0.0
+		if dk != nil {
+			priceVal = dk.PriceCPM
+		} else if ps := q.Get("price"); ps != "" {
+			priceVal, _ = strconv.ParseFloat(ps, 64)
+		}
+
 		clientIP := extractClientIP(r)
 		logSampled(200, "ImpressionEndpoint: beacon fired auction=%s bid=%s placement=%s from ip=%s", auctionID, bidID, placementID, maskIP(clientIP))
 
 		// Record a TrackingEvent so the events log stays complete.
-		priceVal := 0.0
-		if ps := q.Get("price"); ps != "" {
-			priceVal, _ = strconv.ParseFloat(ps, 64)
-		}
 		h.tracking.record(TrackingEvent{
 			AuctionID:   auctionID,
 			BidID:       bidID,
-			Bidder:      q.Get("bidder"),
+			Bidder:      bidder,
 			PlacementID: placementID,
 			Event:       EventImpression,
 			CrID:        q.Get("crid"),
 			Price:       priceVal,
 			ADomain:     q.Get("adom"),
-			ReceivedAt:  time.Now(),
+			ReceivedAt:  now,
 		})
 
-		// Credit dimension stats and retrieve the authoritative auction
-		// context cached at fill time (price, publisher, advertiser).
-		// This is the single source of truth — the beacon URL price param
-		// is only a fallback when the cache has expired (e.g. server restart).
-		dk := h.videoStats.incDimImpression(auctionID)
 		h.metricsEng.RecordImps(metrics.ImpLabels{VideoImps: true})
 
 		// Use cached auction data for revenue attribution when available;
@@ -4141,13 +4356,12 @@ func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
 				cfg = resolvedCfg
 			}
 		}
-		h.recordImpressionMetric(placementID, auctionID, bidID, q.Get("bidder"), q.Get("crid"), priceVal, cfg, dk)
+		h.recordImpressionMetric(placementID, auctionID, bidID, bidder, q.Get("crid"), priceVal, cfg, dk)
 
 		// Fire demand BURL server-side (OpenRTB 2.5 §7.2: exchange fires
 		// billing notice when a billable event occurs — ad render confirmed).
-		burlKey := auctionID + ":" + bidID
-		if val, ok := h.pendingBURLs.LoadAndDelete(burlKey); ok {
-			if pb, ok := val.(pendingBURL); ok && time.Now().Before(pb.ExpiresAt) {
+		if val, ok := h.pendingBURLs.LoadAndDelete(key); ok {
+			if pb, ok := val.(pendingBURL); ok && now.Before(pb.ExpiresAt) {
 				h.fireBillingNotice(pb.URL)
 			}
 		}

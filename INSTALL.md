@@ -129,6 +129,10 @@ Persistence behavior:
 - Video analytics facts use ClickHouse when `CLICKHOUSE_DSN` is set.
 - Impression-confirmed revenue and impression counts are derived from the player firing `/video/impression`.
 - Requests and opportunities are stored as event facts too, but headline analytics formulas treat the impression beacon as the source of truth for billable delivery.
+- Demand forwarding smoke is available via `make smoke-demand-forwarding` to capture the outbound request to demand and the final response returned to the player for `VAST->VAST`, `VAST->ORTB`, `ORTB->VAST`, and `ORTB->ORTB`.
+- NURL and VAST mode smoke is available via `make smoke-nurl-vast-modes` to verify `NURL-only`, `VAST Wrapper`, and `VAST InLine` handling against a running local server.
+- Fasthttp benchmark coverage is available via `make bench-fasthttp` to compare native route dispatch against the adapted `net/http` path for representative endpoints.
+- End-to-end load testing is available via `make loadtest-status` and `make loadtest-video-tracking` against a running local server, or directly with `go run ./cmd/fasthttp-loadtest -url <target>`.
 
 ---
 

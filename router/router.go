@@ -40,6 +40,7 @@ import (
 	"github.com/prebid/prebid-server/v4/server/ssl"
 	storedRequestsConf "github.com/prebid/prebid-server/v4/stored_requests/config"
 	"github.com/prebid/prebid-server/v4/usersync"
+	"github.com/prebid/prebid-server/v4/util/fasthttpclient"
 	"github.com/prebid/prebid-server/v4/util/jsonutil"
 	"github.com/prebid/prebid-server/v4/util/uuidutil"
 	"github.com/prebid/prebid-server/v4/version"
@@ -147,15 +148,20 @@ type Router struct {
 	*httprouter.Router
 	MetricsEngine   *metricsConf.DetailedMetricsEngine
 	ParamsValidator openrtb_ext.BidderParamValidator
+	cfg             *config.Configuration
+	videoPipeline   *endpoints.VideoPipelineHandler
+	fastStatus      fasthttp.RequestHandler
+	versionResponse []byte
+	fastHTTPFallback fasthttp.RequestHandler
+	fastAdRequestSem chan struct{}
 
 	shutdowns []func()
 }
 
-// FastHTTPHandler adapts the existing httprouter-based router to a fasthttp
-// RequestHandler so the server can run on fasthttp without rewriting all
-// endpoint handlers.
+// FastHTTPHandler returns the native fasthttp hot-path dispatcher with a
+// fallback to the existing httprouter stack for non-hot endpoints.
 func (r *Router) FastHTTPHandler() fasthttp.RequestHandler {
-	return fasthttpadaptor.NewFastHTTPHandler(r)
+	return r.fastHandler()
 }
 
 // ListenAndServe starts a fasthttp server with the adapted handler. This keeps
@@ -170,6 +176,27 @@ func New(cfg *config.Configuration, rateConverter *currency.RateConverter) (r *R
 
 	r = &Router{
 		Router: httprouter.New(),
+		cfg:    cfg,
+	}
+
+	r.fastStatus = endpoints.NewFastStatusHandler(cfg.StatusResponse, cfg)
+	versionValue := version.Ver
+	if versionValue == "" {
+		versionValue = "not-set"
+	}
+	revisionValue := version.Rev
+	if revisionValue == "" {
+		revisionValue = "not-set"
+	}
+	r.versionResponse, err = jsonutil.Marshal(struct {
+		Revision string `json:"revision"`
+		Version  string `json:"version"`
+	}{
+		Revision: revisionValue,
+		Version:  versionValue,
+	})
+	if err != nil {
+		logger.Fatalf("error creating /version endpoint response: %v", err)
 	}
 
 	certPool, certPoolCreateErr := ssl.CreateCertPool()
@@ -184,54 +211,42 @@ func New(cfg *config.Configuration, rateConverter *currency.RateConverter) (r *R
 		logger.Infof("Could not read certificates file: %s \n", readCertErr.Error())
 	}
 
-	generalHttpClient := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: defaultTransportDialContext(&net.Dialer{
-				Timeout:   time.Duration(cfg.Client.Dialer.TimeoutSeconds) * time.Second,
-				KeepAlive: time.Duration(cfg.Client.Dialer.KeepAliveSeconds) * time.Second,
-			}),
-			MaxConnsPerHost:       cfg.Client.MaxConnsPerHost,
-			MaxIdleConns:          cfg.Client.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.Client.MaxIdleConnsPerHost,
-			IdleConnTimeout:       time.Duration(cfg.Client.IdleConnTimeout) * time.Second,
-			TLSClientConfig:       &tls.Config{RootCAs: certPool},
-			TLSHandshakeTimeout:   time.Duration(cfg.Client.TLSHandshakeTimeout) * time.Second,
-			ExpectContinueTimeout: time.Duration(cfg.Client.ExpectContinueTimeout) * time.Second,
-		},
-	}
+	generalHttpClient := fasthttpclient.NewClient(0, fasthttpclient.TransportConfig{
+		Name:                "pbs-general",
+		DialTimeout:         time.Duration(cfg.Client.Dialer.TimeoutSeconds) * time.Second,
+		KeepAlive:           time.Duration(cfg.Client.Dialer.KeepAliveSeconds) * time.Second,
+		MaxConnsPerHost:     cfg.Client.MaxConnsPerHost,
+		MaxIdleConnDuration: time.Duration(cfg.Client.IdleConnTimeout) * time.Second,
+		ReadTimeout:         time.Duration(cfg.Client.TLSHandshakeTimeout) * time.Second,
+		WriteTimeout:        time.Duration(cfg.Client.ExpectContinueTimeout) * time.Second,
+		TLSConfig:           &tls.Config{RootCAs: certPool},
+		ReadBufferSize:      8192,
+		WriteBufferSize:     8192,
+	})
 
-	cacheHttpClient := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: defaultTransportDialContext(&net.Dialer{
-				Timeout:   time.Duration(cfg.CacheClient.Dialer.TimeoutSeconds) * time.Second,
-				KeepAlive: time.Duration(cfg.CacheClient.Dialer.KeepAliveSeconds) * time.Second,
-			}),
-			MaxConnsPerHost:       cfg.CacheClient.MaxConnsPerHost,
-			MaxIdleConns:          cfg.CacheClient.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.CacheClient.MaxIdleConnsPerHost,
-			IdleConnTimeout:       time.Duration(cfg.CacheClient.IdleConnTimeout) * time.Second,
-			TLSHandshakeTimeout:   time.Duration(cfg.CacheClient.TLSHandshakeTimeout) * time.Second,
-			ExpectContinueTimeout: time.Duration(cfg.CacheClient.ExpectContinueTimeout) * time.Second,
-		},
-	}
+	cacheHttpClient := fasthttpclient.NewClient(0, fasthttpclient.TransportConfig{
+		Name:                "pbs-cache",
+		DialTimeout:         time.Duration(cfg.CacheClient.Dialer.TimeoutSeconds) * time.Second,
+		KeepAlive:           time.Duration(cfg.CacheClient.Dialer.KeepAliveSeconds) * time.Second,
+		MaxConnsPerHost:     cfg.CacheClient.MaxConnsPerHost,
+		MaxIdleConnDuration: time.Duration(cfg.CacheClient.IdleConnTimeout) * time.Second,
+		ReadTimeout:         time.Duration(cfg.CacheClient.TLSHandshakeTimeout) * time.Second,
+		WriteTimeout:        time.Duration(cfg.CacheClient.ExpectContinueTimeout) * time.Second,
+		ReadBufferSize:      8192,
+		WriteBufferSize:     8192,
+	})
 
-	floorFetcherHTTPClient := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: defaultTransportDialContext(&net.Dialer{
-				Timeout:   time.Duration(cfg.PriceFloors.Fetcher.HttpClient.Dialer.TimeoutSeconds) * time.Second,
-				KeepAlive: time.Duration(cfg.PriceFloors.Fetcher.HttpClient.Dialer.KeepAliveSeconds) * time.Second,
-			}),
-			MaxConnsPerHost:       cfg.PriceFloors.Fetcher.HttpClient.MaxConnsPerHost,
-			MaxIdleConns:          cfg.PriceFloors.Fetcher.HttpClient.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.PriceFloors.Fetcher.HttpClient.MaxIdleConnsPerHost,
-			IdleConnTimeout:       time.Duration(cfg.PriceFloors.Fetcher.HttpClient.IdleConnTimeout) * time.Second,
-			TLSHandshakeTimeout:   time.Duration(cfg.PriceFloors.Fetcher.HttpClient.TLSHandshakeTimeout) * time.Second,
-			ExpectContinueTimeout: time.Duration(cfg.PriceFloors.Fetcher.HttpClient.ExpectContinueTimeout) * time.Second,
-		},
-	}
+	floorFetcherHTTPClient := fasthttpclient.NewClient(0, fasthttpclient.TransportConfig{
+		Name:                "pbs-floors",
+		DialTimeout:         time.Duration(cfg.PriceFloors.Fetcher.HttpClient.Dialer.TimeoutSeconds) * time.Second,
+		KeepAlive:           time.Duration(cfg.PriceFloors.Fetcher.HttpClient.Dialer.KeepAliveSeconds) * time.Second,
+		MaxConnsPerHost:     cfg.PriceFloors.Fetcher.HttpClient.MaxConnsPerHost,
+		MaxIdleConnDuration: time.Duration(cfg.PriceFloors.Fetcher.HttpClient.IdleConnTimeout) * time.Second,
+		ReadTimeout:         time.Duration(cfg.PriceFloors.Fetcher.HttpClient.TLSHandshakeTimeout) * time.Second,
+		WriteTimeout:        time.Duration(cfg.PriceFloors.Fetcher.HttpClient.ExpectContinueTimeout) * time.Second,
+		ReadBufferSize:      8192,
+		WriteBufferSize:     8192,
+	})
 
 	if err := checkSupportedUserSyncEndpoints(cfg.BidderInfos); err != nil {
 		return nil, err
@@ -381,8 +396,11 @@ func New(cfg *config.Configuration, rateConverter *currency.RateConverter) (r *R
 	//   GET/POST /video/adserver         — ad server config CRUD
 	videoPipeline := endpoints.NewVideoPipelineHandler(theExchange, cfg, r.MetricsEngine, "./data")
 	r.shutdowns = append(r.shutdowns, videoPipeline.Shutdown)
+	r.videoPipeline = videoPipeline
+	r.fastHTTPFallback = fasthttpadaptor.NewFastHTTPHandler(r.Router)
 	vastEp := videoPipeline.VASTEndpoint()
 	ortbEp := videoPipeline.ORTBEndpoint()
+	r.fastAdRequestSem = make(chan struct{}, maxConcurrentAdRequests)
 	r.GET("/video/vast", newRateLimiter(maxConcurrentAdRequests, vastEp))
 	r.POST("/video/vast", newRateLimiter(maxConcurrentAdRequests, vastEp))
 	r.GET("/video/ortb", newRateLimiter(maxConcurrentAdRequests, ortbEp))

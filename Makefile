@@ -2,7 +2,7 @@
 
 all: deps test build-modules build
 
-.PHONY: deps test build-modules build build-analytics image format smoke-storage-analytics
+.PHONY: deps test build-modules build build-analytics image format smoke-storage-analytics smoke-demand-forwarding smoke-nurl-vast-modes bench-fasthttp loadtest-status loadtest-video-tracking
 
 # deps will clean out the vendor directory and use go mod for a fresh install
 deps:
@@ -39,6 +39,30 @@ image:
 # impression analytics against a running local server.
 smoke-storage-analytics:
 	go run ./scripts/storage_analytics_smoke.go
+
+# smoke-demand-forwarding verifies ad-unit request forwarding and demand
+# responses across VAST/ORTB routing paths against a running local server.
+smoke-demand-forwarding:
+	go run ./scripts/demand_forwarding_smoke.go
+
+# smoke-nurl-vast-modes verifies NURL-only handling plus VAST inline/wrapper
+# behavior against a running local server.
+smoke-nurl-vast-modes:
+	go run ./scripts/nurl_vast_modes_smoke.go
+
+# bench-fasthttp compares the native fasthttp dispatch path against the
+# legacy adapted net/http path for representative routes.
+bench-fasthttp:
+	go test -run '^$$' -bench 'BenchmarkFastHTTP' -benchmem ./router ./endpoints
+
+# loadtest-status measures end-to-end throughput against a running local server.
+loadtest-status:
+	go run ./cmd/fasthttp-loadtest -url http://127.0.0.1:8000/status -concurrency 200 -duration 15s
+
+# loadtest-video-tracking exercises the hot video tracking beacon path against
+# a running local server without relying on external demand.
+loadtest-video-tracking:
+	go run ./cmd/fasthttp-loadtest -url 'http://127.0.0.1:8000/video/tracking?auction_id=bench-auction&bid_id=bench-bid&bidder=bench&event=start&placement_id=bench-placement&price=1.23' -concurrency 200 -duration 15s
 
 # format runs format
 format:
