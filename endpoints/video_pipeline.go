@@ -3083,6 +3083,9 @@ func (h *VideoPipelineHandler) postToDemandORTB(
 	pr *PlayerRequest,
 	adsCfg *AdServerConfig,
 ) (*openrtb2.BidResponse, error) {
+	if err := validateOutboundPublicURL(adsCfg.DemandOrtbURL); err != nil {
+		return nil, fmt.Errorf("invalid demand ORTB url: %w", err)
+	}
 	bidReq := h.buildOpenRTBRequest(pr, adsCfg)
 	cleanReq := cleanrtb.FromPrebidRequest(bidReq)
 	body, err := json.Marshal(cleanReq)
@@ -4148,6 +4151,10 @@ func (h *VideoPipelineHandler) fireWinNotice(nurl string) {
 	if nurl == "" {
 		return
 	}
+	if err := validateOutboundPublicURL(nurl); err != nil {
+		log.Printf("fireWinNotice: skipped invalid NURL: %v", err)
+		return
+	}
 	// Dedup: skip if this exact NURL was already fired during this process lifetime.
 	if _, loaded := h.firedNURLs.LoadOrStore(nurl, time.Now()); loaded {
 		return
@@ -4181,6 +4188,10 @@ func (h *VideoPipelineHandler) fireWinNotice(nurl string) {
 // Errors are logged for observability.
 func (h *VideoPipelineHandler) fireBillingNotice(burl string) {
 	if burl == "" {
+		return
+	}
+	if err := validateOutboundPublicURL(burl); err != nil {
+		log.Printf("fireBillingNotice: skipped invalid BURL: %v", err)
 		return
 	}
 	client := h.demandClient
@@ -4633,6 +4644,32 @@ func (h *VideoPipelineHandler) AdServerConfigEndpoint() httprouter.Handle {
 				http.Error(w, "placement_id is required", http.StatusBadRequest)
 				return
 			}
+			if cfg.DemandVASTURL != "" {
+				if err := validateOutboundPublicURL(cfg.DemandVASTURL); err != nil {
+					http.Error(w, "invalid demand_vast_url: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			if cfg.DemandOrtbURL != "" {
+				if err := validateOutboundPublicURL(cfg.DemandOrtbURL); err != nil {
+					http.Error(w, "invalid demand_ortb_url: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			for _, extra := range cfg.ExtraDemand {
+				if extra.VASTTagURL != "" {
+					if err := validateOutboundPublicURL(extra.VASTTagURL); err != nil {
+						http.Error(w, "invalid extra_demand.vast_tag_url: "+err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+				if extra.OrtbURL != "" {
+					if err := validateOutboundPublicURL(extra.OrtbURL); err != nil {
+						http.Error(w, "invalid extra_demand.ortb_url: "+err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+			}
 			h.configStore.set(&cfg)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
@@ -4655,6 +4692,53 @@ func (h *VideoPipelineHandler) AdServerConfigEndpoint() httprouter.Handle {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}
+}
+
+func validateOutboundPublicURL(rawURL string) error {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return errors.New("url is empty")
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return fmt.Errorf("parse url: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("url scheme must be http or https")
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return errors.New("url host is empty")
+	}
+	lowerHost := strings.ToLower(host)
+	if lowerHost == "localhost" || strings.HasSuffix(lowerHost, ".localhost") || strings.HasSuffix(lowerHost, ".local") {
+		return errors.New("url host must be public")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if !isPublicOutboundIP(ip) {
+			return errors.New("url host must be public")
+		}
+		return nil
+	}
+	if !strings.Contains(lowerHost, ".") {
+		return errors.New("url host must be public")
+	}
+	return nil
+}
+
+func isPublicOutboundIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsUnspecified() {
+		return false
+	}
+	if ipv4 := ip.To4(); ipv4 != nil {
+		if ipv4[0] == 100 && ipv4[1] >= 64 && ipv4[1] <= 127 {
+			return false
+		}
+	}
+	return true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

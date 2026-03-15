@@ -3,6 +3,7 @@ package endpoints
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
@@ -350,7 +351,7 @@ func NewDashboardLoginPostHandler() httprouter.Handle {
 			username = r.FormValue("username")
 			password = r.FormValue("password")
 		}
-		if username != dashAdminUser || password != dashAdminPass {
+		if !secureStringEquals(username, dashAdminUser) || !secureStringEquals(password, dashAdminPass) {
 			if strings.Contains(ct, "application/json") {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
@@ -391,6 +392,12 @@ func NewDashboardLoginPostHandler() httprouter.Handle {
 			http.Redirect(w, r, "/dashboard", http.StatusFound)
 		}
 	}
+}
+
+func secureStringEquals(left, right string) bool {
+	leftHash := sha256.Sum256([]byte(left))
+	rightHash := sha256.Sum256([]byte(right))
+	return subtle.ConstantTimeCompare(leftHash[:], rightHash[:]) == 1
 }
 
 // NewDashboardLogoutHandler invalidates the session cookie and redirects to login.
@@ -2969,7 +2976,7 @@ func isAuthorizedBidReportWrite(r *http.Request) bool {
 				provided = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 			}
 		}
-		return subtle.ConstantTimeCompare([]byte(provided), []byte(key)) == 1
+		return secureStringEquals(provided, key)
 	}
 	if isValidDashSession(r) {
 		return true
