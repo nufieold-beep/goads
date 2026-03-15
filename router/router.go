@@ -412,6 +412,7 @@ func New(cfg *config.Configuration, rateConverter *currency.RateConverter) (r *R
 	r.POST("/video/adserver", auth(videoPipeline.AdServerConfigEndpoint()))
 	r.DELETE("/video/adserver/:placement_id", auth(videoPipeline.AdServerConfigEndpoint()))
 	r.GET("/dashboard/stats/video", auth(videoPipeline.VideoStatsEndpoint()))
+	r.GET("/dashboard/stats/video/overview", auth(videoPipeline.VideoOverviewStatsEndpoint()))
 	r.POST("/dashboard/stats/reset", auth(videoPipeline.ResetStatsEndpoint()))
 	r.GET("/dashboard/config", auth(videoPipeline.DashboardConfigEndpoint()))
 

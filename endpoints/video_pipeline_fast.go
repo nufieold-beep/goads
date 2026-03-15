@@ -2,6 +2,7 @@ package endpoints
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -290,11 +291,11 @@ func (h *VideoPipelineHandler) HandleFastImpression(ctx *fasthttp.RequestCtx) {
 
 	var cfg *AdServerConfig
 	if dk != nil {
-		h.videoStats.incImpressionBatch(dk.PublisherID, dk.AdvertiserID, dk.PriceCPM)
+		h.videoStats.incImpressionBatch(dk.PublisherID, dk.AdvertiserID, dk.PriceCPM, dk.PublisherPriceCPM)
 	} else if placementID != "" {
 		if resolvedCfg, err := h.resolveAdServerConfig(placementID); err == nil {
-		cfg = resolvedCfg
-		h.videoStats.incImpressionBatch(resolvedCfg.PublisherID, resolvedCfg.AdvertiserID, priceVal)
+			cfg = resolvedCfg
+			h.videoStats.incImpressionBatch(resolvedCfg.PublisherID, resolvedCfg.AdvertiserID, priceVal, resolvedCfg.FloorCPM)
 		}
 	}
 	h.recordImpressionMetric(placementID, auctionID, bidID, bidder, crID, priceVal, cfg, dk)
@@ -346,6 +347,19 @@ func (h *VideoPipelineHandler) HandleFastVideoStats(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	payload := h.snapshotVideoMetrics()
+	ctx.Response.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	writeFastJSONValue(ctx, fasthttp.StatusOK, payload)
+}
+
+func (h *VideoPipelineHandler) HandleFastVideoOverviewStats(ctx *fasthttp.RequestCtx) {
+	if !requireFastDashAuth(ctx) {
+		return
+	}
+	payload, err := h.snapshotOverviewMetrics(context.Background(), string(ctx.QueryArgs().Peek("period")), string(ctx.QueryArgs().Peek("tz")), time.Now().UTC())
+	if err != nil {
+		writeFastTextError(ctx, fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
 	ctx.Response.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	writeFastJSONValue(ctx, fasthttp.StatusOK, payload)
 }
@@ -459,9 +473,9 @@ func (h *VideoPipelineHandler) parsePlayerRequestFast(ctx *fasthttp.RequestCtx) 
 		if len(raw) > 0 {
 			v := bytesToStringView(raw)
 			if bytes.IndexByte(raw, '%') >= 0 {
-			if dec, err := url.PathUnescape(v); err == nil {
-				v = dec
-			}
+				if dec, err := url.PathUnescape(v); err == nil {
+					v = dec
+				}
 			}
 			*dst = v
 		}

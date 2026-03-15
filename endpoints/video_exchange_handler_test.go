@@ -58,8 +58,11 @@ func TestVideoExchangeSyncPipelineCfgPropagatesSourceAndCampaignFields(t *testin
 	if registered.TargetingExt["channel"] != "sports" {
 		t.Fatalf("expected targeting_ext.channel to sync, got %#v", registered.TargetingExt)
 	}
-	if registered.FloorCPM != 4.25 {
-		t.Fatalf("expected campaign floor to override source floor, got %v", registered.FloorCPM)
+	if registered.FloorCPM != 2.5 {
+		t.Fatalf("expected source floor to remain on runtime config, got %v", registered.FloorCPM)
+	}
+	if registered.DemandFloorCPM != 4.25 {
+		t.Fatalf("expected campaign floor to become demand floor, got %v", registered.DemandFloorCPM)
 	}
 	if registered.DemandVASTURL != "https://demand.example/vast" {
 		t.Fatalf("expected campaign vast url, got %q", registered.DemandVASTURL)

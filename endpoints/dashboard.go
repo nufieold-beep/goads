@@ -893,9 +893,9 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 			cfg.DemandVASTURL = camp.VASTTagURL
 			cfg.DemandOrtbURL = camp.OrtbEndpointURL
 			cfg.AdvertiserID = camp.AdvertiserID
-			// Apply campaign-level floor only when set.
+			// Campaign demand floor is distinct from source floor pricing.
 			if camp.FloorCPM > 0 {
-				cfg.FloorCPM = camp.FloorCPM
+				cfg.DemandFloorCPM = camp.FloorCPM
 			}
 			if len(camp.BAdv) > 0 {
 				cfg.BAdv = camp.BAdv
@@ -2859,9 +2859,14 @@ func (h *BidReportHandler) List() httprouter.Handle {
 		filterEvent := q.Get("event_type")
 		filterPub := q.Get("publisher_id")
 		filterAdUnit := q.Get("ad_unit_id")
+		sortBy := q.Get("sort_by")
+		sortDir := q.Get("sort_dir")
 
 		if filterCampaign == "" && filterAdomain == "" && filterCrID == "" &&
 			filterBidder == "" && filterEvent == "" && filterPub == "" && filterAdUnit == "" {
+			if sortBy != "" {
+				sortBidReportEntries(all, sortBy, sortDir)
+			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{"total": len(all), "entries": all})
 			return
 		}
@@ -2900,8 +2905,101 @@ func (h *BidReportHandler) List() httprouter.Handle {
 			}
 			out = append(out, e)
 		}
+		if sortBy != "" {
+			sortBidReportEntries(out, sortBy, sortDir)
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"total": len(out), "entries": out})
 	}
+}
+
+func sortBidReportEntries(entries []*BidReportEntry, sortBy, sortDir string) {
+	if len(entries) < 2 {
+		return
+	}
+	field := strings.ToLower(strings.TrimSpace(sortBy))
+	desc := !strings.EqualFold(sortDir, "asc")
+	sort.SliceStable(entries, func(i, j int) bool {
+		cmp := compareBidReportEntries(entries[i], entries[j], field)
+		if cmp == 0 {
+			cmp = compareTime(entries[i].CreatedAt, entries[j].CreatedAt)
+		}
+		if desc {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
+}
+
+func compareBidReportEntries(left, right *BidReportEntry, field string) int {
+	switch field {
+	case "time", "event_time":
+		return compareTime(left.EventTime, right.EventTime)
+	case "price":
+		return compareFloat64(left.Price, right.Price)
+	case "event", "event_type":
+		return compareString(left.EventType, right.EventType)
+	case "bidder":
+		return compareString(left.Bidder, right.Bidder)
+	case "adomain":
+		return compareString(strings.Join(left.ADomain, ","), strings.Join(right.ADomain, ","))
+	case "crid":
+		return compareString(left.CrID, right.CrID)
+	case "campaign", "campaign_id":
+		return compareString(left.CampaignID, right.CampaignID)
+	case "publisher", "publisher_id":
+		return compareString(left.PublisherID, right.PublisherID)
+	case "ad_unit", "ad_unit_id":
+		return compareString(left.AdUnitID, right.AdUnitID)
+	case "domain":
+		return compareString(firstNonEmpty(left.Domain, left.AppBundle), firstNonEmpty(right.Domain, right.AppBundle))
+	case "country", "country_code":
+		return compareString(left.CountryCode, right.CountryCode)
+	case "env":
+		return compareString(left.Env, right.Env)
+	case "request", "request_id":
+		return compareString(left.RequestID, right.RequestID)
+	case "created_at":
+		return compareTime(left.CreatedAt, right.CreatedAt)
+	case "updated_at":
+		return compareTime(left.UpdatedAt, right.UpdatedAt)
+	default:
+		return compareTime(left.EventTime, right.EventTime)
+	}
+}
+
+func compareString(left, right string) int {
+	return strings.Compare(strings.ToLower(left), strings.ToLower(right))
+}
+
+func compareFloat64(left, right float64) int {
+	switch {
+	case left < right:
+		return -1
+	case left > right:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func compareTime(left, right time.Time) int {
+	switch {
+	case left.Before(right):
+		return -1
+	case left.After(right):
+		return 1
+	default:
+		return 0
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // Push handles POST /dashboard/reports — pushes a single event record.

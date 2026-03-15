@@ -149,6 +149,14 @@ func (r *Router) dispatchFastHotPath(ctx *fasthttp.RequestCtx) bool {
 			r.videoPipeline.HandleFastVideoStats(ctx)
 			return true
 		}
+	case "/dashboard/stats/video/overview":
+		if r.videoPipeline == nil {
+			return false
+		}
+		if method == fasthttp.MethodGet {
+			r.videoPipeline.HandleFastVideoOverviewStats(ctx)
+			return true
+		}
 	case "/dashboard/stats/reset":
 		if r.videoPipeline == nil {
 			return false

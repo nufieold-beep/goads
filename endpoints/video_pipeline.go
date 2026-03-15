@@ -125,6 +125,7 @@ type AdServerConfig struct {
 	APIs           []int    `json:"apis,omitempty"`
 	AllowedBidders []string `json:"allowed_bidders,omitempty"`
 	FloorCPM       float64  `json:"floor_cpm,omitempty"`
+	DemandFloorCPM float64  `json:"demand_floor_cpm,omitempty"`
 	// Targeting keys forwarded into OpenRTB ext.
 	TargetingExt map[string]interface{} `json:"targeting_ext,omitempty"`
 	// Direct demand routing — populated when the Ad Unit is linked to a Campaign.
@@ -189,6 +190,26 @@ type AdServerConfig struct {
 	// CatTax sets the category taxonomy version (imp.cattax / bidrequest.cattax).
 	// 1=IAB 1.0, 2=IAB 2.0, 7=IAB 3.0 Content Taxonomy (default for CTV).
 	CatTax int `json:"cattax,omitempty"`
+}
+
+func (cfg *AdServerConfig) outboundBidFloorCPM() float64 {
+	if cfg == nil {
+		return 0
+	}
+	if cfg.DemandFloorCPM > 0 && (cfg.DemandOrtbURL != "" || cfg.DemandVASTURL != "") {
+		return cfg.DemandFloorCPM
+	}
+	return cfg.FloorCPM
+}
+
+func (cfg *AdServerConfig) winnerMinPriceCPM() float64 {
+	if cfg == nil {
+		return 0
+	}
+	if cfg.DemandFloorCPM > 0 && (cfg.DemandOrtbURL != "" || cfg.DemandVASTURL != "") {
+		return cfg.DemandFloorCPM
+	}
+	return cfg.FloorCPM
 }
 
 // adServerConfigStore is a thread-safe registry of AdServerConfig keyed by PlacementID.
@@ -577,12 +598,13 @@ func trackingEventType(code trackingEventCode) EventType {
 
 // VideoStats holds live counters for a single publisher.
 type VideoStats struct {
-	AdRequests    int64   `json:"ad_requests"`
-	Opportunities int64   `json:"opportunities"` // VAST served (adapter returned a creative)
-	Impressions   int64   `json:"impressions"`   // player-confirmed: /video/tracking?event=impression
-	Completes     int64   `json:"completes"`     // player-confirmed: /video/tracking?event=complete
-	VCR           float64 `json:"vcr_pct"`       // video completion rate: completes ÷ impressions × 100
-	Revenue       float64 `json:"revenue"`       // actual revenue in USD (bid CPM ÷ 1000 per opportunity)
+	AdRequests       int64   `json:"ad_requests"`
+	Opportunities    int64   `json:"opportunities"` // VAST served (adapter returned a creative)
+	Impressions      int64   `json:"impressions"`   // player-confirmed: /video/tracking?event=impression
+	Completes        int64   `json:"completes"`     // player-confirmed: /video/tracking?event=complete
+	VCR              float64 `json:"vcr_pct"`       // video completion rate: completes ÷ impressions × 100
+	Revenue          float64 `json:"revenue"`       // advertiser revenue in USD (demand win CPM ÷ 1000 per impression)
+	PublisherRevenue float64 `json:"publisher_revenue,omitempty"`
 }
 
 // VideoStatsPayload is the JSON payload returned by /dashboard/stats/video.
@@ -598,6 +620,41 @@ type VideoStatsPayload struct {
 	ByDemandChannel map[string]*VideoStats `json:"by_demand_channel"`
 	Total           VideoStats             `json:"total"`
 	StartedAt       int64                  `json:"started_at"` // Unix timestamp of server start; used for QPS calculations
+}
+
+type VideoOverviewSummary struct {
+	AdRequests       int64   `json:"ad_requests"`
+	Opportunities    int64   `json:"opportunities"`
+	Impressions      int64   `json:"impressions"`
+	Completes        int64   `json:"completes"`
+	Revenue          float64 `json:"revenue"`
+	PublisherRevenue float64 `json:"publisher_revenue"`
+	Margin           float64 `json:"margin"`
+	ECPM             float64 `json:"ecpm"`
+	FillRate         float64 `json:"fill_rate"`
+	ResponseRate     float64 `json:"response_rate"`
+	VCR              float64 `json:"vcr"`
+	Viewability      float64 `json:"viewability"`
+}
+
+type VideoOverviewChart struct {
+	Labels               []string `json:"labels"`
+	CurrentRequests      []int64  `json:"current_requests"`
+	CurrentOpportunities []int64  `json:"current_opportunities"`
+	CurrentImpressions   []int64  `json:"current_impressions"`
+	PreviousRequests     []int64  `json:"previous_requests"`
+}
+
+type VideoOverviewPayload struct {
+	Period        string               `json:"period"`
+	Label         string               `json:"label"`
+	PreviousLabel string               `json:"previous_label"`
+	Timezone      string               `json:"timezone"`
+	Current       VideoOverviewSummary `json:"current"`
+	Previous      VideoOverviewSummary `json:"previous"`
+	Chart         VideoOverviewChart   `json:"chart"`
+	UpdatedAt     string               `json:"updated_at"`
+	Source        string               `json:"source"`
 }
 
 // videoStatsDisk is the on-disk format (v3, backward-compatible with v2/legacy).
@@ -617,17 +674,18 @@ type videoStatsDisk struct {
 // auctionDimKey stores dimension labels for one auction so impression/complete
 // beacons fired later can credit the right per-dimension stat buckets.
 type auctionDimKey struct {
-	Bidder       string
-	App          string
-	Placement    string
-	Country      string
-	Device       string
-	Format       string
-	DemandCh     string
-	PriceCPM     float64 // bid price in CPM — used to attribute revenue at impression time
-	PublisherID  string  // cached so impression beacon can credit the right publisher
-	AdvertiserID string  // cached so impression beacon can credit the right advertiser
-	born         int64   // unix seconds — used for TTL eviction
+	Bidder            string
+	App               string
+	Placement         string
+	Country           string
+	Device            string
+	Format            string
+	DemandCh          string
+	PriceCPM          float64 // bid price in CPM — used to attribute revenue at impression time
+	PublisherPriceCPM float64
+	PublisherID       string // cached so impression beacon can credit the right publisher
+	AdvertiserID      string // cached so impression beacon can credit the right advertiser
+	born              int64  // unix seconds — used for TTL eviction
 }
 
 // videoStatsStore tracks per-publisher, per-advertiser, and per-dimension stats
@@ -877,17 +935,18 @@ func (s *videoStatsStore) incDimFill(cfg *AdServerConfig, pr *PlayerRequest, res
 	incD(s.byFormat, format)
 	incD(s.byDemandChannel, demandCh)
 	s.auctionDims[resp.AuctionID] = &auctionDimKey{
-		Bidder:       bidder,
-		App:          app,
-		Placement:    placement,
-		Country:      country,
-		Device:       device,
-		Format:       format,
-		DemandCh:     demandCh,
-		PriceCPM:     resp.WinPrice,
-		PublisherID:  cfg.PublisherID,
-		AdvertiserID: cfg.AdvertiserID,
-		born:         time.Now().Unix(),
+		Bidder:            bidder,
+		App:               app,
+		Placement:         placement,
+		Country:           country,
+		Device:            device,
+		Format:            format,
+		DemandCh:          demandCh,
+		PriceCPM:          resp.WinPrice,
+		PublisherPriceCPM: cfg.FloorCPM,
+		PublisherID:       cfg.PublisherID,
+		AdvertiserID:      cfg.AdvertiserID,
+		born:              time.Now().Unix(),
 	}
 	s.mu.Unlock()
 }
@@ -904,10 +963,12 @@ func (s *videoStatsStore) incDimImpression(auctionID string) *auctionDimKey {
 	dk := s.auctionDims[auctionID]
 	if dk != nil {
 		revenueUSD := dk.PriceCPM / 1000
+		publisherRevenueUSD := dk.PublisherPriceCPM / 1000
 		incDim := func(m map[string]*VideoStats, key string) {
 			if v := m[key]; v != nil {
 				v.Impressions++
 				v.Revenue += revenueUSD
+				v.PublisherRevenue += publisherRevenueUSD
 			}
 		}
 		incDim(s.byBidder, dk.Bidder)
@@ -1020,19 +1081,22 @@ func (s *videoStatsStore) incAdvertiserFill(advID string) {
 }
 
 // incImpressionBatch batches publisher + advertiser impression under one lock.
-func (s *videoStatsStore) incImpressionBatch(pubID, advID string, priceCPM float64) {
+func (s *videoStatsStore) incImpressionBatch(pubID, advID string, advertiserPriceCPM, publisherPriceCPM float64) {
 	if pubID == "" {
 		pubID = "unknown"
 	}
-	rev := priceCPM / 1000
+	advertiserRevenueUSD := advertiserPriceCPM / 1000
+	publisherRevenueUSD := publisherPriceCPM / 1000
 	s.mu.Lock()
 	v := s.getOrCreate(pubID)
 	v.Impressions++
-	v.Revenue += rev
+	v.Revenue += advertiserRevenueUSD
+	v.PublisherRevenue += publisherRevenueUSD
 	if advID != "" {
 		a := s.getOrCreateAdv(advID)
 		a.Impressions++
-		a.Revenue += rev
+		a.Revenue += advertiserRevenueUSD
+		a.PublisherRevenue += publisherRevenueUSD
 	}
 	s.mu.Unlock()
 }
@@ -1322,22 +1386,22 @@ func hashImpressionKey(key impressionKey) uint64 {
 }
 
 type VideoPipelineHandler struct {
-	exchange    exchange.Exchange
-	cfg         *config.Configuration
-	metricsEng  metrics.MetricsEngine
-	configStore *adServerConfigStore
-	tracking    *trackingStore
-	videoStats  *videoStatsStore
+	exchange          exchange.Exchange
+	cfg               *config.Configuration
+	metricsEng        metrics.MetricsEngine
+	configStore       *adServerConfigStore
+	tracking          *trackingStore
+	videoStats        *videoStatsStore
 	clickHouseMetrics *clickHouseVideoMetricsStore
-	bidReport   *BidReportHandler
-	externalURL string
+	bidReport         *BidReportHandler
+	externalURL       string
 	// demandClient is a shared, pool-backed HTTP client for all outbound calls
 	// to demand partners. Tuned for high QPS: 256 keepalive conns per host,
 	// 1 s dial timeout, HTTP/2 enabled.
 	demandClient *http.Client
 	// bufPool reuses byte buffers across requests to eliminate per-request
 	// heap allocations for VAST XML and JSON response serialization.
-	bufPool sync.Pool
+	bufPool         sync.Pool
 	adapterRouterFn func(RouterKey) DemandAdapter
 	// firedNURLs deduplicates NURL win-notice fires to prevent double-counting.
 	firedNURLs sync.Map
@@ -1372,15 +1436,15 @@ func NewVideoPipelineHandler(
 	}
 	vs := newVideoStatsStore(statsFile)
 	h := &VideoPipelineHandler{
-		exchange:    ex,
-		cfg:         cfg,
-		metricsEng:  me,
-		configStore: newAdServerConfigStore(configFile),
-		tracking:    &trackingStore{},
-		videoStats:  vs,
+		exchange:          ex,
+		cfg:               cfg,
+		metricsEng:        me,
+		configStore:       newAdServerConfigStore(configFile),
+		tracking:          &trackingStore{},
+		videoStats:        vs,
 		clickHouseMetrics: newClickHouseVideoMetricsStoreFromEnv(),
-		bidReport:   NewBidReportHandler(dataDir),
-		externalURL: cfg.ExternalURL,
+		bidReport:         NewBidReportHandler(dataDir),
+		externalURL:       cfg.ExternalURL,
 		bufPool: sync.Pool{
 			New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 4096)) },
 		},
@@ -1397,7 +1461,7 @@ func NewVideoPipelineHandler(
 			WriteBufferSize:     8192,
 		}),
 		firedImpressions: newImpressionDeduper(),
-		done: make(chan struct{}),
+		done:             make(chan struct{}),
 	}
 	// Persist stats to disk every 30 seconds; stops on Shutdown.
 	if statsFile != "" {
@@ -1559,7 +1623,7 @@ func (h *VideoPipelineHandler) buildDemandSources(
 		extraCfg.DemandVASTURL = extra.VASTTagURL
 		extraCfg.DemandOrtbURL = extra.OrtbURL
 		if extra.FloorCPM > 0 {
-			extraCfg.FloorCPM = extra.FloorCPM
+			extraCfg.DemandFloorCPM = extra.FloorCPM
 		}
 		if len(extra.BCat) > 0 {
 			extraCfg.BCat = extra.BCat
@@ -1568,7 +1632,7 @@ func (h *VideoPipelineHandler) buildDemandSources(
 			extraCfg.BAdv = extra.BAdv
 		}
 		extraCfg.ExtraDemand = nil // prevent recursion
-		cfgCopy := extraCfg       // heap-allocate for goroutine safety
+		cfgCopy := extraCfg        // heap-allocate for goroutine safety
 		extraAdapter := h.adapterRouter(RouterKey{inbound, resolveDemandType(&cfgCopy)})
 		sources = append(sources, demandSource{
 			cfg: &cfgCopy, adapter: extraAdapter, label: "extra-" + strconv.Itoa(i),
@@ -2465,7 +2529,7 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 		secureVal = 1 // default to HTTPS if publisher omitted
 	}
 
-	bidFloor := adsCfg.FloorCPM
+	bidFloor := adsCfg.outboundBidFloorCPM()
 	video := &openrtb2.Video{
 		MIMEs:         resolveMimeTypes(adsCfg.MimeTypes),
 		Linearity:     adcom1.LinearityLinear,
@@ -2607,7 +2671,7 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 			Series:        pr.ContentSeries,
 			Season:        pr.ContentSeason,
 			URL:           contentURL,
-			ProdQ: prodQPtr(pr.ContentProdQ),
+			ProdQ:         prodQPtr(pr.ContentProdQ),
 		}
 		if pr.ContentLen > 0 {
 			c.Len = pr.ContentLen
@@ -2806,10 +2870,10 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 		Complete: 1,
 		Ver:      "1.0",
 		Nodes: []openrtb2.SupplyChainNode{{
-			ASI:    sellerDomain,
-			SID:    adsCfg.PublisherID,
-			HP:     openrtb2.Int8Ptr(1),
-			RID:    auctionID,
+			ASI: sellerDomain,
+			SID: adsCfg.PublisherID,
+			HP:  openrtb2.Int8Ptr(1),
+			RID: auctionID,
 		}},
 	}
 	if raw, err := json.Marshal(map[string]interface{}{"schain": schain}); err == nil {
@@ -3028,9 +3092,9 @@ func (h *VideoPipelineHandler) postToDemandORTB(
 		if bidReq.App != nil {
 			bundle = bidReq.App.Bundle
 		}
-		logSampled(100, "postToDemandORTB: url=%s id=%s ua_len=%d bundle=%s floor=%.2f tmax=%d body_len=%d",
+		logSampled(100, "postToDemandORTB: url=%s id=%s ua_len=%d bundle=%s source_floor=%.2f demand_floor=%.2f effective_floor=%.2f tmax=%d body_len=%d",
 			adsCfg.DemandOrtbURL, bidReq.ID, len(bidReq.Device.UA),
-			bundle, bidReq.Imp[0].BidFloor, bidReq.TMax, len(body))
+			bundle, adsCfg.FloorCPM, adsCfg.DemandFloorCPM, bidReq.Imp[0].BidFloor, bidReq.TMax, len(body))
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, adsCfg.DemandOrtbURL, bytes.NewReader(body))
@@ -3113,8 +3177,9 @@ var bidRespIntFieldRe = regexp.MustCompile(`("(?:mtype|dur|w|h|wratio|hratio|exp
 // mtypeNameRe matches named mtype constants used by some demand partners
 // instead of the numeric values defined by OpenRTB 2.5 §5.1.
 // Fully case-insensitive to handle all DSP variants:
-//   "CREATIVE_MARKUP_VIDEO", "creative_markup_video", "Video", "video",
-//   "VIDEO_VAST", "VAST", "DISPLAY", etc.
+//
+//	"CREATIVE_MARKUP_VIDEO", "creative_markup_video", "Video", "video",
+//	"VIDEO_VAST", "VAST", "DISPLAY", etc.
 var mtypeNameRe = regexp.MustCompile(`(?i)"mtype"\s*:\s*"(?:CREATIVE_MARKUP_)?([A-Z_]+)"`)
 
 var mtypeNameToInt = map[string]string{
@@ -3237,8 +3302,9 @@ func (h *VideoPipelineHandler) extractWinningBid(
 				emptyAdM++
 				continue
 			}
-			// Enforce price floor: reject bids below the configured floor CPM.
-			if adsCfg != nil && adsCfg.FloorCPM > 0 && bid.Price < adsCfg.FloorCPM {
+			// Enforce the minimum sell price for the active demand path.
+			minPrice := adsCfg.winnerMinPriceCPM()
+			if minPrice > 0 && bid.Price < minPrice {
 				belowFloor++
 				continue
 			}
@@ -3255,11 +3321,11 @@ func (h *VideoPipelineHandler) extractWinningBid(
 
 	// Structured auction log for transparency: shows all candidates + outcome.
 	if hasBest {
-		logSampled(100, "auction id=%s bids=%d empty=%d floor_reject=%d winner=%s seat=%s price=%.4f",
-			resp.ID, totalBids, emptyAdM, belowFloor, bestBid.ID, bestSeat, bestBid.Price)
+		logSampled(100, "auction id=%s bids=%d empty=%d floor_reject=%d source_floor=%.2f demand_floor=%.2f effective_floor=%.2f winner=%s seat=%s price=%.4f",
+			resp.ID, totalBids, emptyAdM, belowFloor, adsCfg.FloorCPM, adsCfg.DemandFloorCPM, adsCfg.winnerMinPriceCPM(), bestBid.ID, bestSeat, bestBid.Price)
 	} else {
-		logSampled(100, "auction id=%s bids=%d empty=%d floor_reject=%d winner=none",
-			resp.ID, totalBids, emptyAdM, belowFloor)
+		logSampled(100, "auction id=%s bids=%d empty=%d floor_reject=%d source_floor=%.2f demand_floor=%.2f effective_floor=%.2f winner=none",
+			resp.ID, totalBids, emptyAdM, belowFloor, adsCfg.FloorCPM, adsCfg.DemandFloorCPM, adsCfg.winnerMinPriceCPM())
 	}
 
 	if !hasBest {
@@ -4346,10 +4412,10 @@ func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
 		// fall back to beacon URL params + config lookup otherwise.
 		var cfg *AdServerConfig
 		if dk != nil {
-			h.videoStats.incImpressionBatch(dk.PublisherID, dk.AdvertiserID, dk.PriceCPM)
+			h.videoStats.incImpressionBatch(dk.PublisherID, dk.AdvertiserID, dk.PriceCPM, dk.PublisherPriceCPM)
 		} else if resolvedCfg, err := h.resolveAdServerConfig(placementID); err == nil {
 			cfg = resolvedCfg
-			h.videoStats.incImpressionBatch(resolvedCfg.PublisherID, resolvedCfg.AdvertiserID, priceVal)
+			h.videoStats.incImpressionBatch(resolvedCfg.PublisherID, resolvedCfg.AdvertiserID, priceVal, resolvedCfg.FloorCPM)
 		}
 		if cfg == nil {
 			if resolvedCfg, err := h.resolveAdServerConfig(placementID); err == nil {
@@ -4435,6 +4501,24 @@ func (h *VideoPipelineHandler) Snapshot() VideoStatsPayload {
 func (h *VideoPipelineHandler) VideoStatsEndpoint() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		payload := h.snapshotVideoMetrics()
+		data, _ := json.Marshal(payload)
+		hdr := w.Header()
+		hdr.Set("Content-Type", "application/json")
+		hdr.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		hdr.Set("Content-Length", strconv.Itoa(len(data)))
+		w.WriteHeader(http.StatusOK)
+		w.Write(data) //nolint:errcheck
+	}
+}
+
+// Route: GET /dashboard/stats/video/overview?period=today|yesterday|week|month
+func (h *VideoPipelineHandler) VideoOverviewStatsEndpoint() httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		payload, err := h.snapshotOverviewMetrics(r.Context(), r.URL.Query().Get("period"), r.URL.Query().Get("tz"), time.Now().UTC())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		data, _ := json.Marshal(payload)
 		hdr := w.Header()
 		hdr.Set("Content-Type", "application/json")

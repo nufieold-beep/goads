@@ -18,3 +18,7 @@ docker run -p 8000:8000 -t prebid-server
 ```
 
 The server can be reached at `http://localhost:8000`.
+
+## Operational audits
+
+For live verification that recorded publisher payout still matches the configured source floor, see `docs/developers/publisher-revenue-audit.md` and the script `scripts/publisher_revenue_mismatch_audit.py`.

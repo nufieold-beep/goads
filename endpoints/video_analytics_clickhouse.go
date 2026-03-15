@@ -20,22 +20,23 @@ const (
 )
 
 type videoMetricEvent struct {
-	EventTime     time.Time
-	EventType     string
-	PlacementID   string
-	PublisherID   string
-	AdvertiserID  string
-	Bidder        string
-	AppID         string
-	Country       string
-	Device        string
-	Format        string
-	DemandChannel string
-	AuctionID     string
-	BidID         string
-	CrID          string
-	PriceCPM      float64
-	RevenueUSD    float64
+	EventTime           time.Time
+	EventType           string
+	PlacementID         string
+	PublisherID         string
+	AdvertiserID        string
+	Bidder              string
+	AppID               string
+	Country             string
+	Device              string
+	Format              string
+	DemandChannel       string
+	AuctionID           string
+	BidID               string
+	CrID                string
+	PriceCPM            float64
+	RevenueUSD          float64
+	PublisherRevenueUSD float64
 }
 
 type clickHouseVideoMetricsStore struct {
@@ -103,12 +104,17 @@ func (s *clickHouseVideoMetricsStore) ensureSchema(ctx context.Context) error {
 			bid_id String,
 			crid String,
 			price_cpm Float64,
-			revenue_usd Float64
+			revenue_usd Float64,
+			publisher_revenue_usd Float64 DEFAULT 0
 		) ENGINE = MergeTree
 		PARTITION BY toYYYYMM(event_date)
 		ORDER BY (event_date, event_type, placement_id, publisher_id, advertiser_id, bidder, auction_id, bid_id)
 	`, s.table)
-	_, err := s.db.ExecContext(ctx, query)
+	if _, err := s.db.ExecContext(ctx, query); err != nil {
+		return err
+	}
+	alterQuery := fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS publisher_revenue_usd Float64 DEFAULT 0`, s.table)
+	_, err := s.db.ExecContext(ctx, alterQuery)
 	return err
 }
 
@@ -168,15 +174,15 @@ func (s *clickHouseVideoMetricsStore) insertBatch(ctx context.Context, batch []v
 		return nil
 	}
 	var builder strings.Builder
-	args := make([]interface{}, 0, len(batch)*16)
+	args := make([]interface{}, 0, len(batch)*17)
 	builder.WriteString("INSERT INTO ")
 	builder.WriteString(s.table)
-	builder.WriteString(" (event_time,event_type,placement_id,publisher_id,advertiser_id,bidder,app_id,country,device,format,demand_channel,auction_id,bid_id,crid,price_cpm,revenue_usd) VALUES ")
+	builder.WriteString(" (event_time,event_type,placement_id,publisher_id,advertiser_id,bidder,app_id,country,device,format,demand_channel,auction_id,bid_id,crid,price_cpm,revenue_usd,publisher_revenue_usd) VALUES ")
 	for i, ev := range batch {
 		if i > 0 {
 			builder.WriteByte(',')
 		}
-		builder.WriteString("(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+		builder.WriteString("(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
 		args = append(args,
 			ev.EventTime.UTC(),
 			ev.EventType,
@@ -194,6 +200,7 @@ func (s *clickHouseVideoMetricsStore) insertBatch(ctx context.Context, batch []v
 			ev.CrID,
 			ev.PriceCPM,
 			ev.RevenueUSD,
+			ev.PublisherRevenueUSD,
 		)
 	}
 	_, err := s.db.ExecContext(ctx, builder.String(), args...)
@@ -254,15 +261,15 @@ func (s *clickHouseVideoMetricsStore) Snapshot(ctx context.Context) (VideoStatsP
 
 func (s *clickHouseVideoMetricsStore) queryGrouped(ctx context.Context, column string) (map[string]*VideoStats, error) {
 	allowed := map[string]bool{
-		"publisher_id":    true,
-		"advertiser_id":   true,
-		"bidder":          true,
-		"app_id":          true,
-		"placement_id":    true,
-		"country":         true,
-		"device":          true,
-		"format":          true,
-		"demand_channel":  true,
+		"publisher_id":   true,
+		"advertiser_id":  true,
+		"bidder":         true,
+		"app_id":         true,
+		"placement_id":   true,
+		"country":        true,
+		"device":         true,
+		"format":         true,
+		"demand_channel": true,
 	}
 	if !allowed[column] {
 		return nil, fmt.Errorf("unsupported column %q", column)
@@ -274,7 +281,8 @@ func (s *clickHouseVideoMetricsStore) queryGrouped(ctx context.Context, column s
 			countIf(event_type = 'opportunity') AS opportunities,
 			countIf(event_type = 'impression') AS impressions,
 			countIf(event_type = 'complete') AS completes,
-			sumIf(revenue_usd, event_type = 'impression') AS revenue
+			sumIf(revenue_usd, event_type = 'impression') AS revenue,
+			sumIf(publisher_revenue_usd, event_type = 'impression') AS publisher_revenue
 		FROM %s
 		GROUP BY dim
 	`, column, s.table)
@@ -287,7 +295,7 @@ func (s *clickHouseVideoMetricsStore) queryGrouped(ctx context.Context, column s
 	for rows.Next() {
 		var key string
 		stats := &VideoStats{}
-		if err := rows.Scan(&key, &stats.AdRequests, &stats.Opportunities, &stats.Impressions, &stats.Completes, &stats.Revenue); err != nil {
+		if err := rows.Scan(&key, &stats.AdRequests, &stats.Opportunities, &stats.Impressions, &stats.Completes, &stats.Revenue, &stats.PublisherRevenue); err != nil {
 			return nil, err
 		}
 		if stats.Impressions > 0 {
@@ -305,11 +313,12 @@ func (s *clickHouseVideoMetricsStore) queryTotal(ctx context.Context) (VideoStat
 			countIf(event_type = 'opportunity') AS opportunities,
 			countIf(event_type = 'impression') AS impressions,
 			countIf(event_type = 'complete') AS completes,
-			sumIf(revenue_usd, event_type = 'impression') AS revenue
+			sumIf(revenue_usd, event_type = 'impression') AS revenue,
+			sumIf(publisher_revenue_usd, event_type = 'impression') AS publisher_revenue
 		FROM %s
 	`, s.table)
 	stats := VideoStats{}
-	if err := s.db.QueryRowContext(ctx, query).Scan(&stats.AdRequests, &stats.Opportunities, &stats.Impressions, &stats.Completes, &stats.Revenue); err != nil {
+	if err := s.db.QueryRowContext(ctx, query).Scan(&stats.AdRequests, &stats.Opportunities, &stats.Impressions, &stats.Completes, &stats.Revenue, &stats.PublisherRevenue); err != nil {
 		return stats, err
 	}
 	if stats.Impressions > 0 {
@@ -328,6 +337,238 @@ func (s *clickHouseVideoMetricsStore) queryStartedAt(ctx context.Context) (int64
 		return time.Now().Unix(), nil
 	}
 	return started.Int64, nil
+}
+
+type overviewWindow struct {
+	period        string
+	label         string
+	previousLabel string
+	timezone      string
+	location      *time.Location
+	currentStart  time.Time
+	currentEnd    time.Time
+	previousStart time.Time
+	previousEnd   time.Time
+	bucketSize    time.Duration
+}
+
+type overviewBucketCounts struct {
+	Requests      int64
+	Opportunities int64
+	Impressions   int64
+}
+
+const overviewDayStartHour = 7
+
+func resolveOverviewLocation(timezone string) (*time.Location, string) {
+	timezone = strings.TrimSpace(timezone)
+	if timezone == "" {
+		return time.UTC, time.UTC.String()
+	}
+	loc, err := time.LoadLocation(timezone)
+	if err != nil {
+		return time.UTC, time.UTC.String()
+	}
+	return loc, timezone
+}
+
+func overviewDayStart(baseNow time.Time, location *time.Location) time.Time {
+	start := time.Date(baseNow.Year(), baseNow.Month(), baseNow.Day(), overviewDayStartHour, 0, 0, 0, location)
+	if baseNow.Before(start) {
+		start = start.Add(-24 * time.Hour)
+	}
+	return start
+}
+
+func buildOverviewWindow(period string, now time.Time, location *time.Location) overviewWindow {
+	if location == nil {
+		location = time.UTC
+	}
+	baseNow := now.In(location)
+	startOfDay := overviewDayStart(baseNow, location)
+	switch strings.ToLower(strings.TrimSpace(period)) {
+	case "yesterday":
+		currentStart := startOfDay.Add(-24 * time.Hour)
+		currentEnd := startOfDay
+		previousStart := currentStart.Add(-24 * time.Hour)
+		return overviewWindow{period: "yesterday", label: "Yesterday", previousLabel: "2 Days Ago", timezone: location.String(), location: location, currentStart: currentStart, currentEnd: currentEnd, previousStart: previousStart, previousEnd: currentStart, bucketSize: time.Hour}
+	case "week":
+		currentStart := startOfDay.AddDate(0, 0, -6)
+		previousStart := currentStart.AddDate(0, 0, -7)
+		return overviewWindow{period: "week", label: "Last 7 Days", previousLabel: "Previous 7 Days", timezone: location.String(), location: location, currentStart: currentStart, currentEnd: baseNow, previousStart: previousStart, previousEnd: currentStart, bucketSize: 24 * time.Hour}
+	case "month":
+		currentStart := startOfDay.AddDate(0, 0, -29)
+		previousStart := currentStart.AddDate(0, 0, -30)
+		return overviewWindow{period: "month", label: "Last 30 Days", previousLabel: "Previous 30 Days", timezone: location.String(), location: location, currentStart: currentStart, currentEnd: baseNow, previousStart: previousStart, previousEnd: currentStart, bucketSize: 24 * time.Hour}
+	default:
+		elapsed := baseNow.Sub(startOfDay)
+		previousStart := startOfDay.Add(-24 * time.Hour)
+		return overviewWindow{period: "today", label: "Today", previousLabel: "Yesterday", timezone: location.String(), location: location, currentStart: startOfDay, currentEnd: baseNow, previousStart: previousStart, previousEnd: previousStart.Add(elapsed), bucketSize: time.Hour}
+	}
+}
+
+func overviewSummaryFromVideoStats(stats VideoStats) VideoOverviewSummary {
+	summary := VideoOverviewSummary{
+		AdRequests:       stats.AdRequests,
+		Opportunities:    stats.Opportunities,
+		Impressions:      stats.Impressions,
+		Completes:        stats.Completes,
+		Revenue:          stats.Revenue,
+		PublisherRevenue: stats.PublisherRevenue,
+		Margin:           stats.Revenue - stats.PublisherRevenue,
+		VCR:              stats.VCR,
+	}
+	if summary.Impressions > 0 {
+		summary.ECPM = summary.Revenue / float64(summary.Impressions) * 1000
+	}
+	if summary.AdRequests > 0 {
+		summary.FillRate = float64(summary.Opportunities) / float64(summary.AdRequests) * 100
+	}
+	if summary.Opportunities > 0 {
+		summary.ResponseRate = float64(summary.Impressions) / float64(summary.Opportunities) * 100
+	}
+	summary.Viewability = summary.VCR * 1.15
+	if summary.Viewability > 100 {
+		summary.Viewability = 100
+	}
+	return summary
+}
+
+func overviewBucketKey(bucket time.Time, bucketSize time.Duration) string {
+	if bucketSize >= 24*time.Hour {
+		return bucket.Format("2006-01-02")
+	}
+	return bucket.Format("2006-01-02 15:00")
+}
+
+func buildOverviewLabels(window overviewWindow) ([]time.Time, []string, []string) {
+	buckets := make([]time.Time, 0, 32)
+	keys := make([]string, 0, 32)
+	labels := make([]string, 0, 32)
+	for bucket := window.currentStart; bucket.Before(window.currentEnd); bucket = bucket.Add(window.bucketSize) {
+		buckets = append(buckets, bucket)
+		keys = append(keys, overviewBucketKey(bucket.In(window.location), window.bucketSize))
+		if window.bucketSize >= 24*time.Hour {
+			labels = append(labels, bucket.Format("Jan 02"))
+		} else {
+			labels = append(labels, bucket.Format("15:00"))
+		}
+	}
+	if len(buckets) == 0 {
+		buckets = append(buckets, window.currentStart)
+		keys = append(keys, overviewBucketKey(window.currentStart.In(window.location), window.bucketSize))
+		if window.bucketSize >= 24*time.Hour {
+			labels = append(labels, window.currentStart.Format("Jan 02"))
+		} else {
+			labels = append(labels, window.currentStart.Format("15:00"))
+		}
+	}
+	return buckets, keys, labels
+}
+
+func (s *clickHouseVideoMetricsStore) queryVideoStatsRange(ctx context.Context, start, end time.Time) (VideoStats, error) {
+	query := fmt.Sprintf(`
+		SELECT
+			countIf(event_type = 'request') AS ad_requests,
+			countIf(event_type = 'opportunity') AS opportunities,
+			countIf(event_type = 'impression') AS impressions,
+			countIf(event_type = 'complete') AS completes,
+			sumIf(revenue_usd, event_type = 'impression') AS revenue,
+			sumIf(publisher_revenue_usd, event_type = 'impression') AS publisher_revenue
+		FROM %s
+		WHERE event_time >= ? AND event_time < ?
+	`, s.table)
+	stats := VideoStats{}
+	if err := s.db.QueryRowContext(ctx, query, start.UTC(), end.UTC()).Scan(&stats.AdRequests, &stats.Opportunities, &stats.Impressions, &stats.Completes, &stats.Revenue, &stats.PublisherRevenue); err != nil {
+		return stats, err
+	}
+	if stats.Impressions > 0 {
+		stats.VCR = float64(stats.Completes) / float64(stats.Impressions) * 100
+	}
+	return stats, nil
+}
+
+func (s *clickHouseVideoMetricsStore) queryOverviewSeries(ctx context.Context, start, end time.Time, bucketSize time.Duration, timezone string) (map[string]overviewBucketCounts, error) {
+	timezone = strings.ReplaceAll(timezone, "'", "''")
+	bucketExpr := fmt.Sprintf("formatDateTime(toStartOfHour(toTimeZone(event_time, '%s')), '%%Y-%%m-%%d %%H:00', '%s')", timezone, timezone)
+	if bucketSize >= 24*time.Hour {
+		bucketExpr = fmt.Sprintf("formatDateTime(toStartOfDay(toTimeZone(event_time, '%s') - INTERVAL %d HOUR) + INTERVAL %d HOUR, '%%Y-%%m-%%d', '%s')", timezone, overviewDayStartHour, overviewDayStartHour, timezone)
+	}
+	query := fmt.Sprintf(`
+		SELECT
+			%s AS bucket,
+			countIf(event_type = 'request') AS ad_requests,
+			countIf(event_type = 'opportunity') AS opportunities,
+			countIf(event_type = 'impression') AS impressions
+		FROM %s
+		WHERE event_time >= ? AND event_time < ?
+		GROUP BY bucket
+		ORDER BY bucket
+	`, bucketExpr, s.table)
+	rows, err := s.db.QueryContext(ctx, query, start.UTC(), end.UTC())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]overviewBucketCounts)
+	for rows.Next() {
+		var bucket string
+		var counts overviewBucketCounts
+		if err := rows.Scan(&bucket, &counts.Requests, &counts.Opportunities, &counts.Impressions); err != nil {
+			return nil, err
+		}
+		out[bucket] = counts
+	}
+	return out, rows.Err()
+}
+
+func (s *clickHouseVideoMetricsStore) Overview(ctx context.Context, period, timezone string, now time.Time) (VideoOverviewPayload, error) {
+	location, resolvedTimezone := resolveOverviewLocation(timezone)
+	window := buildOverviewWindow(period, now, location)
+	payload := VideoOverviewPayload{
+		Period:        window.period,
+		Label:         window.label,
+		PreviousLabel: window.previousLabel,
+		Timezone:      resolvedTimezone,
+		UpdatedAt:     now.In(location).Format(time.RFC3339),
+		Source:        "clickhouse",
+	}
+	currentStats, err := s.queryVideoStatsRange(ctx, window.currentStart, window.currentEnd)
+	if err != nil {
+		return payload, err
+	}
+	previousStats, err := s.queryVideoStatsRange(ctx, window.previousStart, window.previousEnd)
+	if err != nil {
+		return payload, err
+	}
+	payload.Current = overviewSummaryFromVideoStats(currentStats)
+	payload.Previous = overviewSummaryFromVideoStats(previousStats)
+	currentSeries, err := s.queryOverviewSeries(ctx, window.currentStart, window.currentEnd, window.bucketSize, resolvedTimezone)
+	if err != nil {
+		return payload, err
+	}
+	previousSeries, err := s.queryOverviewSeries(ctx, window.previousStart, window.previousEnd, window.bucketSize, resolvedTimezone)
+	if err != nil {
+		return payload, err
+	}
+	buckets, keys, labels := buildOverviewLabels(window)
+	payload.Chart.Labels = labels
+	payload.Chart.CurrentRequests = make([]int64, len(buckets))
+	payload.Chart.CurrentOpportunities = make([]int64, len(buckets))
+	payload.Chart.CurrentImpressions = make([]int64, len(buckets))
+	payload.Chart.PreviousRequests = make([]int64, len(buckets))
+	for index := range buckets {
+		if counts, ok := currentSeries[keys[index]]; ok {
+			payload.Chart.CurrentRequests[index] = counts.Requests
+			payload.Chart.CurrentOpportunities[index] = counts.Opportunities
+			payload.Chart.CurrentImpressions[index] = counts.Impressions
+		}
+		prevBucket := window.previousStart.Add(time.Duration(index) * window.bucketSize).In(location)
+		if counts, ok := previousSeries[overviewBucketKey(prevBucket, window.bucketSize)]; ok {
+			payload.Chart.PreviousRequests[index] = counts.Requests
+		}
+	}
+	return payload, nil
 }
 
 func (s *clickHouseVideoMetricsStore) Reset(ctx context.Context) error {
@@ -431,21 +672,22 @@ func (h *VideoPipelineHandler) recordImpressionMetric(placementID, auctionID, bi
 		return
 	}
 	ev := videoMetricEvent{
-		EventTime:    time.Now().UTC(),
-		EventType:    "impression",
-		PlacementID:  placementID,
-		PublisherID:  "unknown",
-		AuctionID:    auctionID,
-		BidID:        bidID,
-		Bidder:       bidder,
-		CrID:         crid,
-		PriceCPM:     priceCPM,
-		RevenueUSD:   priceCPM / 1000,
-		Country:      "(unknown)",
-		Device:       "Unknown",
-		Format:       "(unknown)",
-		DemandChannel:"Unknown",
-		AppID:        "(unknown)",
+		EventTime:           time.Now().UTC(),
+		EventType:           "impression",
+		PlacementID:         placementID,
+		PublisherID:         "unknown",
+		AuctionID:           auctionID,
+		BidID:               bidID,
+		Bidder:              bidder,
+		CrID:                crid,
+		PriceCPM:            priceCPM,
+		RevenueUSD:          priceCPM / 1000,
+		PublisherRevenueUSD: 0,
+		Country:             "(unknown)",
+		Device:              "Unknown",
+		Format:              "(unknown)",
+		DemandChannel:       "Unknown",
+		AppID:               "(unknown)",
 	}
 	if cfg != nil {
 		ev.PublisherID = cfg.PublisherID
@@ -453,6 +695,7 @@ func (h *VideoPipelineHandler) recordImpressionMetric(placementID, auctionID, bi
 		ev.Format = metricFormat(cfg)
 		ev.AppID = metricAppID(nil, cfg)
 		ev.DemandChannel = demandChannelLabel(resolveDemandType(cfg))
+		ev.PublisherRevenueUSD = cfg.FloorCPM / 1000
 	}
 	if dk != nil {
 		ev.PublisherID = dk.PublisherID
@@ -465,6 +708,7 @@ func (h *VideoPipelineHandler) recordImpressionMetric(placementID, auctionID, bi
 		ev.DemandChannel = dk.DemandCh
 		ev.PriceCPM = dk.PriceCPM
 		ev.RevenueUSD = dk.PriceCPM / 1000
+		ev.PublisherRevenueUSD = dk.PublisherPriceCPM / 1000
 	}
 	h.clickHouseMetrics.Record(ev)
 }
@@ -474,20 +718,20 @@ func (h *VideoPipelineHandler) recordTrackingMetric(ev TrackingEvent, cfg *AdSer
 		return
 	}
 	record := videoMetricEvent{
-		EventTime:    ev.ReceivedAt.UTC(),
-		EventType:    string(ev.Event),
-		PlacementID:  ev.PlacementID,
-		PublisherID:  "unknown",
-		AuctionID:    ev.AuctionID,
-		BidID:        ev.BidID,
-		Bidder:       ev.Bidder,
-		CrID:         ev.CrID,
-		PriceCPM:     ev.Price,
-		Country:      "(unknown)",
-		Device:       "Unknown",
-		Format:       "(unknown)",
-		DemandChannel:"Unknown",
-		AppID:        "(unknown)",
+		EventTime:     ev.ReceivedAt.UTC(),
+		EventType:     string(ev.Event),
+		PlacementID:   ev.PlacementID,
+		PublisherID:   "unknown",
+		AuctionID:     ev.AuctionID,
+		BidID:         ev.BidID,
+		Bidder:        ev.Bidder,
+		CrID:          ev.CrID,
+		PriceCPM:      ev.Price,
+		Country:       "(unknown)",
+		Device:        "Unknown",
+		Format:        "(unknown)",
+		DemandChannel: "Unknown",
+		AppID:         "(unknown)",
 	}
 	if cfg != nil {
 		record.PublisherID = cfg.PublisherID
@@ -521,6 +765,33 @@ func (h *VideoPipelineHandler) snapshotVideoMetrics() VideoStatsPayload {
 		log.Printf("clickhouse metrics: snapshot failed, falling back to memory: %v", err)
 	}
 	return h.videoStats.snapshot()
+}
+
+func (h *VideoPipelineHandler) snapshotOverviewMetrics(ctx context.Context, period, timezone string, now time.Time) (VideoOverviewPayload, error) {
+	location, resolvedTimezone := resolveOverviewLocation(timezone)
+	window := buildOverviewWindow(period, now, location)
+	if h.clickHouseMetrics != nil {
+		queryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		payload, err := h.clickHouseMetrics.Overview(queryCtx, window.period, resolvedTimezone, now)
+		if err == nil {
+			return payload, nil
+		}
+		log.Printf("clickhouse metrics: overview failed, falling back to snapshot totals: %v", err)
+	}
+	snapshot := h.snapshotVideoMetrics().Total
+	summary := overviewSummaryFromVideoStats(snapshot)
+	return VideoOverviewPayload{
+		Period:        window.period,
+		Label:         window.label,
+		PreviousLabel: window.previousLabel,
+		Timezone:      resolvedTimezone,
+		Current:       summary,
+		Previous:      VideoOverviewSummary{},
+		Chart:         VideoOverviewChart{Labels: []string{window.label}, CurrentRequests: []int64{summary.AdRequests}, CurrentOpportunities: []int64{summary.Opportunities}, CurrentImpressions: []int64{summary.Impressions}, PreviousRequests: []int64{0}},
+		UpdatedAt:     now.In(location).Format(time.RFC3339),
+		Source:        "snapshot-fallback",
+	}, nil
 }
 
 func (h *VideoPipelineHandler) resetVideoMetrics() error {
