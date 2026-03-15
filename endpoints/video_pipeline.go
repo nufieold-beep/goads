@@ -165,13 +165,6 @@ type AdServerConfig struct {
 	// Used to route per-advertiser stats into videoStatsStore.ByAdvertiser.
 	AdvertiserID string `json:"-"`
 
-	// CampaignProtocols holds the DEMAND-SIDE protocol list from the linked
-	// Campaign config (what the campaign can deliver). This is stored
-	// separately from Protocols (the supply-side / player capability list)
-	// and is NOT injected into imp.video.protocols. It is available for
-	// informational / filtering use only.
-	CampaignProtocols []int `json:"-"`
-
 	// SellerDomain is this exchange's domain used in the supply chain
 	// (schain) node. Set via config to identify the exchange in the chain.
 	SellerDomain string `json:"seller_domain,omitempty"`
@@ -199,18 +192,45 @@ type adServerConfigStore struct {
 	mu        sync.RWMutex
 	configs   map[string]*AdServerConfig
 	filePath  string
+	label     string
 	saveMu    sync.Mutex  // serialises disk writes so concurrent set() calls don't race
 	saveTimer *time.Timer // debounce: coalesces rapid set() bursts into a single write
 }
 
 func newAdServerConfigStore(filePath string) *adServerConfigStore {
-	s := &adServerConfigStore{configs: make(map[string]*AdServerConfig), filePath: filePath}
+	s := &adServerConfigStore{configs: make(map[string]*AdServerConfig), filePath: filePath, label: "ad_server_configs"}
 	s.load()
 	return s
 }
 
-// load reads previously-saved configs from disk (best-effort; skips if file absent).
+// load reads previously-saved configs from PostgreSQL when configured,
+// otherwise from disk as a fallback.
 func (s *adServerConfigStore) load() {
+	if db := getDashDB(); db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		rows, err := db.QueryContext(ctx, `SELECT payload FROM dashboard_entities WHERE kind=$1`, s.label)
+		if err != nil {
+			log.Printf("config store: load db: %v", err)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var payload []byte
+			if err := rows.Scan(&payload); err != nil {
+				log.Printf("config store: scan db: %v", err)
+				return
+			}
+			var cfg AdServerConfig
+			if err := json.Unmarshal(payload, &cfg); err != nil {
+				log.Printf("config store: parse db: %v", err)
+				continue
+			}
+			cp := cfg
+			s.configs[cfg.PlacementID] = &cp
+		}
+		return
+	}
 	if s.filePath == "" {
 		return
 	}
@@ -232,14 +252,47 @@ func (s *adServerConfigStore) load() {
 	}
 }
 
-// save writes current configs to disk atomically. Serialised by saveMu so
-// concurrent calls (e.g. from the debounce timer) never race on the temp file.
+// save writes current configs to PostgreSQL when configured, otherwise to disk.
+// Serialised by saveMu so concurrent calls never race on the storage backend.
 func (s *adServerConfigStore) save() {
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
+	if db := getDashDB(); db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			log.Printf("config store: begin tx: %v", err)
+			return
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM dashboard_entities WHERE kind=$1`, s.label); err != nil {
+			log.Printf("config store: purge db: %v", err)
+			_ = tx.Rollback()
+			return
+		}
+		s.mu.RLock()
+		for placementID, cfg := range s.configs {
+			payload, err := json.Marshal(cfg)
+			if err != nil {
+				log.Printf("config store: marshal db: %v", err)
+				continue
+			}
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO dashboard_entities(kind,id,payload) VALUES ($1,$2,$3)`,
+				s.label, placementID, payload,
+			); err != nil {
+				log.Printf("config store: insert db: %v", err)
+			}
+		}
+		s.mu.RUnlock()
+		if err := tx.Commit(); err != nil {
+			log.Printf("config store: commit db: %v", err)
+		}
+		return
+	}
 	if s.filePath == "" {
 		return
 	}
-	s.saveMu.Lock()
-	defer s.saveMu.Unlock()
 	s.mu.RLock()
 	out := make(map[string]AdServerConfig, len(s.configs))
 	for k, v := range s.configs {
@@ -1073,6 +1126,7 @@ type VideoPipelineHandler struct {
 	configStore *adServerConfigStore
 	tracking    *trackingStore
 	videoStats  *videoStatsStore
+	clickHouseMetrics *clickHouseVideoMetricsStore
 	bidReport   *BidReportHandler
 	externalURL string
 	// demandClient is a shared, pool-backed HTTP client for all outbound calls
@@ -1121,6 +1175,7 @@ func NewVideoPipelineHandler(
 		configStore: newAdServerConfigStore(configFile),
 		tracking:    &trackingStore{},
 		videoStats:  vs,
+		clickHouseMetrics: newClickHouseVideoMetricsStoreFromEnv(),
 		bidReport:   NewBidReportHandler(dataDir),
 		externalURL: cfg.ExternalURL,
 		bufPool: sync.Pool{
@@ -1194,6 +1249,9 @@ func (h *VideoPipelineHandler) Shutdown() {
 		// already closed
 	default:
 		close(h.done)
+	}
+	if h.clickHouseMetrics != nil {
+		h.clickHouseMetrics.Close()
 	}
 }
 
@@ -1393,6 +1451,7 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 
 		// ── Stages 3-6: demand routing via waterfall ─────────────────────
 		h.videoStats.incRequestBatch(adsCfg.PublisherID, adsCfg.AdvertiserID)
+		h.recordRequestMetric(req, adsCfg)
 		resp, err := h.runDemandWaterfall(ctx, req, adsCfg, InboundVAST)
 		if err != nil {
 			log.Printf("VASTEndpoint: no fill for placement %s after all demand sources", req.PlacementID)
@@ -1405,6 +1464,7 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 		if !resp.NoFill {
 			h.videoStats.incFillBatch(adsCfg.PublisherID, adsCfg.AdvertiserID)
 			h.videoStats.incDimFill(adsCfg, req, resp, resolveDemandType(adsCfg))
+			h.recordOpportunityMetric(req, adsCfg, resp)
 			h.recordBidReport(adsCfg, req, resp, "win")
 		}
 		h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
@@ -1461,6 +1521,7 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 
 		// ── Stages 3-5: demand routing via waterfall ─────────────────────
 		h.videoStats.incRequestBatch(adsCfg.PublisherID, adsCfg.AdvertiserID)
+		h.recordRequestMetric(req, adsCfg)
 		resp, err := h.runDemandWaterfall(ctx, req, adsCfg, InboundORTB)
 		if err != nil {
 			log.Printf("ORTBEndpoint: no fill for placement %s after all demand sources", req.PlacementID)
@@ -1531,6 +1592,7 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 		if !resp.NoFill {
 			h.videoStats.incFillBatch(adsCfg.PublisherID, adsCfg.AdvertiserID)
 			h.videoStats.incDimFill(adsCfg, req, resp, resolveDemandType(adsCfg))
+			h.recordOpportunityMetric(req, adsCfg, resp)
 			h.recordBidReport(adsCfg, req, resp, "win")
 		}
 		h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
@@ -2153,11 +2215,7 @@ func (h *VideoPipelineHandler) buildOpenRTBRequest(
 		maxDur = pr.MaxDuration
 	}
 
-	// ── Protocols — SUPPLY SIDE (what the publisher's player can render) ──
-	// These come from the ad unit config and are independent of the linked
-	// campaign's Protocols (demand side / what the buyer can deliver).
-	// AdServerConfig.CampaignProtocols holds the demand-side list for
-	// informational use; it is intentionally NOT used here.
+	// ── Protocols — demand capability from campaign, else runtime defaults ──
 	var protocols []adcom1.MediaCreativeSubtype
 	if len(adsCfg.Protocols) > 0 {
 		protocols = make([]adcom1.MediaCreativeSubtype, len(adsCfg.Protocols))
@@ -3965,10 +4023,21 @@ func (h *VideoPipelineHandler) TrackingEndpoint() httprouter.Handle {
 		}
 
 		h.tracking.record(ev)
+		var cfg *AdServerConfig
+		if resolvedCfg, err := h.resolveAdServerConfig(ev.PlacementID); err == nil {
+			cfg = resolvedCfg
+		}
+		var dk *auctionDimKey
+		if ev.AuctionID != "" {
+			h.videoStats.mu.Lock()
+			dk = h.videoStats.auctionDims[ev.AuctionID]
+			h.videoStats.mu.Unlock()
+		}
+		h.recordTrackingMetric(ev, cfg, dk)
 
 		// Count player-confirmed completes (100% viewed).
 		if ev.Event == EventComplete {
-			if cfg, err2 := h.resolveAdServerConfig(ev.PlacementID); err2 == nil {
+			if cfg != nil {
 				h.videoStats.incComplete(cfg.PublisherID)
 				h.videoStats.incAdvertiserComplete(cfg.AdvertiserID)
 			}
@@ -4060,11 +4129,19 @@ func (h *VideoPipelineHandler) ImpressionEndpoint() httprouter.Handle {
 
 		// Use cached auction data for revenue attribution when available;
 		// fall back to beacon URL params + config lookup otherwise.
+		var cfg *AdServerConfig
 		if dk != nil {
 			h.videoStats.incImpressionBatch(dk.PublisherID, dk.AdvertiserID, dk.PriceCPM)
-		} else if cfg, err := h.resolveAdServerConfig(placementID); err == nil {
-			h.videoStats.incImpressionBatch(cfg.PublisherID, cfg.AdvertiserID, priceVal)
+		} else if resolvedCfg, err := h.resolveAdServerConfig(placementID); err == nil {
+			cfg = resolvedCfg
+			h.videoStats.incImpressionBatch(resolvedCfg.PublisherID, resolvedCfg.AdvertiserID, priceVal)
 		}
+		if cfg == nil {
+			if resolvedCfg, err := h.resolveAdServerConfig(placementID); err == nil {
+				cfg = resolvedCfg
+			}
+		}
+		h.recordImpressionMetric(placementID, auctionID, bidID, q.Get("bidder"), q.Get("crid"), priceVal, cfg, dk)
 
 		// Fire demand BURL server-side (OpenRTB 2.5 §7.2: exchange fires
 		// billing notice when a billable event occurs — ad render confirmed).
@@ -4134,7 +4211,7 @@ func (h *VideoPipelineHandler) TrackingEventsEndpoint() httprouter.Handle {
 // Snapshot returns a live snapshot of all video statistics.
 // Used by DashboardRegistry.WireVideoStats to enrich supply/demand partner list responses.
 func (h *VideoPipelineHandler) Snapshot() VideoStatsPayload {
-	return h.videoStats.snapshot()
+	return h.snapshotVideoMetrics()
 }
 
 // VideoStatsEndpoint exposes per-publisher ad request / opportunity / impression
@@ -4143,7 +4220,7 @@ func (h *VideoPipelineHandler) Snapshot() VideoStatsPayload {
 // Route: GET /dashboard/stats/video
 func (h *VideoPipelineHandler) VideoStatsEndpoint() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-		payload := h.videoStats.snapshot()
+		payload := h.snapshotVideoMetrics()
 		data, _ := json.Marshal(payload)
 		hdr := w.Header()
 		hdr.Set("Content-Type", "application/json")
@@ -4161,7 +4238,10 @@ func (h *VideoPipelineHandler) ResetStatsEndpoint() httprouter.Handle {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		h.videoStats.reset()
+		if err := h.resetVideoMetrics(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"ok":true}`)) //nolint:errcheck
@@ -4226,7 +4306,7 @@ func (h *VideoPipelineHandler) DashboardConfigEndpoint() httprouter.Handle {
 //
 //	POST /video/adserver
 func (h *VideoPipelineHandler) AdServerConfigEndpoint() httprouter.Handle {
-	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		switch r.Method {
 
 		case http.MethodGet:
@@ -4255,6 +4335,19 @@ func (h *VideoPipelineHandler) AdServerConfigEndpoint() httprouter.Handle {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(cfg) //nolint:errcheck
+
+		case http.MethodDelete:
+			placementID := ps.ByName("placement_id")
+			if placementID == "" {
+				http.Error(w, "placement_id is required", http.StatusBadRequest)
+				return
+			}
+			if h.configStore.get(placementID) == nil {
+				http.Error(w, "placement not found", http.StatusNotFound)
+				return
+			}
+			h.configStore.remove(placementID)
+			w.WriteHeader(http.StatusNoContent)
 
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

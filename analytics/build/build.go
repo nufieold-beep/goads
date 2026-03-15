@@ -5,64 +5,81 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/prebid/prebid-server/v4/analytics"
-	"github.com/prebid/prebid-server/v4/analytics/agma"
+	"github.com/prebid/prebid-server/v4/analytics/analyticsdeps"
 	"github.com/prebid/prebid-server/v4/analytics/clients"
-	"github.com/prebid/prebid-server/v4/analytics/filesystem"
-	"github.com/prebid/prebid-server/v4/analytics/pubstack"
-	"github.com/prebid/prebid-server/v4/config"
+	"github.com/mitchellh/mapstructure"
 	"github.com/prebid/prebid-server/v4/logger"
 	"github.com/prebid/prebid-server/v4/openrtb_ext"
 	"github.com/prebid/prebid-server/v4/ortb"
 	"github.com/prebid/prebid-server/v4/privacy"
 )
 
-// Modules that need to be logged to need to be initialized here
-func New(analytics *config.Analytics) analytics.Runner {
-	modules := make(enabledAnalytics, 0)
-	if len(analytics.File.Filename) > 0 {
-		if mod, err := filesystem.NewFileLogger(analytics.File.Filename); err == nil {
-			modules["filelogger"] = mod
-		} else {
-			logger.Fatalf("Could not initialize FileLogger for file %v :%v", analytics.File.Filename, err)
-		}
+// New initializes all configured analytics modules using the registered builders.
+func New(cfg map[string]interface{}) analytics.Runner {
+	deps := analyticsdeps.Deps{
+		HTTPClient: clients.GetDefaultHttpInstance(),
+		Clock:      clock.New(),
 	}
 
-	if analytics.Pubstack.Enabled {
-		pubstackModule, err := pubstack.NewModule(
-			clients.GetDefaultHttpInstance(),
-			analytics.Pubstack.ScopeId,
-			analytics.Pubstack.IntakeUrl,
-			analytics.Pubstack.ConfRefresh,
-			analytics.Pubstack.Buffers.EventCount,
-			analytics.Pubstack.Buffers.BufferSize,
-			analytics.Pubstack.Buffers.Timeout,
-			clock.New())
-		if err == nil {
-			modules["pubstack"] = pubstackModule
-		} else {
-			logger.Errorf("Could not initialize PubstackModule: %v", err)
-		}
-	}
+	return NewWithDeps(cfg, deps, Builders())
+}
 
-	if analytics.Agma.Enabled {
-		agmaModule, err := agma.NewModule(
-			clients.GetDefaultHttpInstance(),
-			analytics.Agma,
-			clock.New())
-		if err == nil {
-			modules["agma"] = agmaModule
-		} else {
-			logger.Errorf("Could not initialize Agma Anayltics: %v", err)
+// Collection of all the correctly configured analytics modules - implements the PBSAnalyticsModule interface
+type EnabledAnalytics map[string]analytics.Module
+
+// NewWithDeps initializes analytics modules using injected dependencies and builders.
+func NewWithDeps(cfg map[string]interface{}, deps analyticsdeps.Deps, builders AnalyticsModuleBuilders) analytics.Runner {
+	modules := make(EnabledAnalytics)
+
+	for moduleName, buildFn := range builders {
+		module, err := buildFn(moduleConfig(cfg, moduleName), deps)
+		if err != nil {
+			logger.Errorf("Could not initialize analytics module %s: %v", moduleName, err)
+			continue
+		}
+		if module != nil {
+			modules[moduleName] = module
 		}
 	}
 
 	return modules
 }
 
-// Collection of all the correctly configured analytics modules - implements the PBSAnalyticsModule interface
-type enabledAnalytics map[string]analytics.Module
+func moduleConfig(cfg map[string]interface{}, moduleName string) map[string]interface{} {
+	if cfg == nil {
+		return nil
+	}
 
-func (ea enabledAnalytics) LogAuctionObject(ao *analytics.AuctionObject, ac privacy.ActivityControl) {
+	raw, ok := cfg[moduleName]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	if configMap, ok := raw.(map[string]interface{}); ok {
+		return configMap
+	}
+
+	if configMap, ok := raw.(map[interface{}]interface{}); ok {
+		converted := make(map[string]interface{}, len(configMap))
+		for key, value := range configMap {
+			stringKey, ok := key.(string)
+			if !ok {
+				continue
+			}
+			converted[stringKey] = value
+		}
+		return converted
+	}
+
+	decoded := make(map[string]interface{})
+	if err := mapstructure.Decode(raw, &decoded); err != nil {
+		return nil
+	}
+
+	return decoded
+}
+
+func (ea EnabledAnalytics) LogAuctionObject(ao *analytics.AuctionObject, ac privacy.ActivityControl) {
 	for name, module := range ea {
 		if isAllowed, cloneBidderReq := evaluateActivities(ao.RequestWrapper, ac, name); isAllowed {
 			if cloneBidderReq != nil {
@@ -77,7 +94,7 @@ func (ea enabledAnalytics) LogAuctionObject(ao *analytics.AuctionObject, ac priv
 	}
 }
 
-func (ea enabledAnalytics) LogVideoObject(vo *analytics.VideoObject, ac privacy.ActivityControl) {
+func (ea EnabledAnalytics) LogVideoObject(vo *analytics.VideoObject, ac privacy.ActivityControl) {
 	for name, module := range ea {
 		if isAllowed, cloneBidderReq := evaluateActivities(vo.RequestWrapper, ac, name); isAllowed {
 			if cloneBidderReq != nil {
@@ -93,19 +110,19 @@ func (ea enabledAnalytics) LogVideoObject(vo *analytics.VideoObject, ac privacy.
 	}
 }
 
-func (ea enabledAnalytics) LogCookieSyncObject(cso *analytics.CookieSyncObject) {
+func (ea EnabledAnalytics) LogCookieSyncObject(cso *analytics.CookieSyncObject) {
 	for _, module := range ea {
 		module.LogCookieSyncObject(cso)
 	}
 }
 
-func (ea enabledAnalytics) LogSetUIDObject(so *analytics.SetUIDObject) {
+func (ea EnabledAnalytics) LogSetUIDObject(so *analytics.SetUIDObject) {
 	for _, module := range ea {
 		module.LogSetUIDObject(so)
 	}
 }
 
-func (ea enabledAnalytics) LogAmpObject(ao *analytics.AmpObject, ac privacy.ActivityControl) {
+func (ea EnabledAnalytics) LogAmpObject(ao *analytics.AmpObject, ac privacy.ActivityControl) {
 	for name, module := range ea {
 		if isAllowed, cloneBidderReq := evaluateActivities(ao.RequestWrapper, ac, name); isAllowed {
 			if cloneBidderReq != nil {
@@ -120,7 +137,7 @@ func (ea enabledAnalytics) LogAmpObject(ao *analytics.AmpObject, ac privacy.Acti
 	}
 }
 
-func (ea enabledAnalytics) LogNotificationEventObject(ne *analytics.NotificationEvent, ac privacy.ActivityControl) {
+func (ea EnabledAnalytics) LogNotificationEventObject(ne *analytics.NotificationEvent, ac privacy.ActivityControl) {
 	for name, module := range ea {
 		component := privacy.Component{Type: privacy.ComponentTypeAnalytics, Name: name}
 		if ac.Allow(privacy.ActivityReportAnalytics, component, privacy.ActivityRequest{}) {
@@ -130,7 +147,7 @@ func (ea enabledAnalytics) LogNotificationEventObject(ne *analytics.Notification
 }
 
 // Shutdown - correctly shutdown all analytics modules and wait for them to finish
-func (ea enabledAnalytics) Shutdown() {
+func (ea EnabledAnalytics) Shutdown() {
 	for _, module := range ea {
 		module.Shutdown()
 	}

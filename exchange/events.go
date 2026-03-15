@@ -9,6 +9,8 @@ import (
 	"github.com/prebid/prebid-server/v4/analytics"
 	"github.com/prebid/prebid-server/v4/config"
 	"github.com/prebid/prebid-server/v4/endpoints/events"
+	"github.com/prebid/prebid-server/v4/injector"
+	"github.com/prebid/prebid-server/v4/macros"
 	"github.com/prebid/prebid-server/v4/openrtb_ext"
 	"github.com/prebid/prebid-server/v4/util/jsonutil"
 	"github.com/prebid/prebid-server/v4/version"
@@ -23,10 +25,12 @@ type eventTracking struct {
 	integrationType    string
 	bidderInfos        config.BidderInfos
 	externalURL        string
+	events             injector.VASTEvents
+	macroProvider      *macros.MacroProvider
 }
 
 // getEventTracking creates an eventTracking object from the different configuration sources
-func getEventTracking(requestExtPrebid *openrtb_ext.ExtRequestPrebid, ts time.Time, account *config.Account, bidderInfos config.BidderInfos, externalURL string) *eventTracking {
+func getEventTracking(requestExtPrebid *openrtb_ext.ExtRequestPrebid, ts time.Time, account *config.Account, bidderInfos config.BidderInfos, externalURL string, macroProvider *macros.MacroProvider) *eventTracking {
 	return &eventTracking{
 		accountID:          account.ID,
 		enabledForAccount:  account.Events.Enabled,
@@ -35,6 +39,8 @@ func getEventTracking(requestExtPrebid *openrtb_ext.ExtRequestPrebid, ts time.Ti
 		integrationType:    getIntegrationType(requestExtPrebid),
 		bidderInfos:        bidderInfos,
 		externalURL:        externalURL,
+		events:             convertToVastEvent(account.Events),
+		macroProvider:      macroProvider,
 	}
 }
 
@@ -70,12 +76,12 @@ func (ev *eventTracking) modifyBidVAST(pbsBid *entities.PbsOrtbBid, bidderName o
 	if pbsBid.BidType != openrtb_ext.BidTypeVideo || len(bid.AdM) == 0 && len(bid.NURL) == 0 {
 		return
 	}
-	vastXML := makeVAST(bid)
+	ev.injectTrackers(pbsBid, bidderName)
 	bidID := bid.ID
 	if len(pbsBid.GeneratedBidID) > 0 {
 		bidID = pbsBid.GeneratedBidID
 	}
-	if newVastXML, ok := events.ModifyVastXmlString(ev.externalURL, vastXML, bidID, bidderName.String(), ev.accountID, ev.auctionTimestampMs, ev.integrationType); ok {
+	if newVastXML, ok := events.ModifyVastXmlString(ev.externalURL, bid.AdM, bidID, bidderName.String(), ev.accountID, ev.auctionTimestampMs, ev.integrationType); ok {
 		bid.AdM = newVastXML
 	}
 }
@@ -146,4 +152,52 @@ func (ev *eventTracking) makeEventURL(evType analytics.EventType, pbsBid *entiti
 // isEventAllowed checks if events are enabled by default or on account/request level
 func (ev *eventTracking) isEventAllowed() bool {
 	return ev.enabledForAccount || ev.enabledForRequest
+}
+
+func (ev *eventTracking) injectTrackers(pbsBid *entities.PbsOrtbBid, bidderName openrtb_ext.BidderName) {
+	if ev.macroProvider == nil {
+		return
+	}
+
+	ev.macroProvider.PopulateBidMacros(pbsBid, bidderName.String())
+	tracker := injector.NewTrackerInjector(
+		macros.NewStringIndexBasedReplacer(),
+		ev.macroProvider,
+		ev.events,
+	)
+
+	if adm, err := tracker.InjectTracker(pbsBid.Bid.AdM, pbsBid.Bid.NURL); err == nil {
+		pbsBid.Bid.AdM = adm
+	}
+}
+
+func convertToVastEvent(eventsCfg config.Events) injector.VASTEvents {
+	vastEvents := injector.VASTEvents{
+		TrackingEvents: make(map[string][]string),
+	}
+
+	for _, vastEvent := range eventsCfg.VASTEvents {
+		switch vastEvent.CreateElement {
+		case config.ErrorVASTElement:
+			vastEvents.Errors = appendURLs(vastEvents.Errors, vastEvent, eventsCfg.DefaultURL)
+		case config.TrackingVASTElement:
+			vastEvents.TrackingEvents[string(vastEvent.Type)] = appendURLs(vastEvents.TrackingEvents[string(vastEvent.Type)], vastEvent, eventsCfg.DefaultURL)
+		case config.ClickTrackingVASTElement:
+			vastEvents.VideoClicks = appendURLs(vastEvents.VideoClicks, vastEvent, eventsCfg.DefaultURL)
+		case config.NonLinearClickTrackingVASTElement:
+			vastEvents.NonLinearClickTracking = appendURLs(vastEvents.NonLinearClickTracking, vastEvent, eventsCfg.DefaultURL)
+		case config.CompanionClickThroughVASTElement:
+			vastEvents.CompanionClickThrough = appendURLs(vastEvents.CompanionClickThrough, vastEvent, eventsCfg.DefaultURL)
+		}
+	}
+
+	return vastEvents
+}
+
+func appendURLs(urls []string, vastEvent config.VASTEvent, defaultURL string) []string {
+	urls = append(urls, vastEvent.URLs...)
+	if !vastEvent.ExcludeDefaultURL {
+		urls = append(urls, defaultURL)
+	}
+	return urls
 }

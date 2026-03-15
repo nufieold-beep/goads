@@ -2,7 +2,7 @@
 
 all: deps test build-modules build
 
-.PHONY: deps test build-modules build image format
+.PHONY: deps test build-modules build build-analytics image format smoke-storage-analytics
 
 # deps will clean out the vendor directory and use go mod for a fresh install
 deps:
@@ -22,6 +22,11 @@ endif
 build-modules:
 	go generate modules/modules.go
 
+# build-analytics validates analytics packages after analytics module changes
+build-analytics:
+	go generate ./analytics/build
+	go test ./analytics/...
+
 # build will ensure all of our tests pass and then build the go binary
 build: test
 	go build -mod=vendor ./...
@@ -29,6 +34,11 @@ build: test
 # image will build a docker image
 image:
 	docker build -t prebid-server .
+
+# smoke-storage-analytics verifies PostgreSQL CRUD persistence and ClickHouse
+# impression analytics against a running local server.
+smoke-storage-analytics:
+	go run ./scripts/storage_analytics_smoke.go
 
 # format runs format
 format:

@@ -56,17 +56,18 @@ type Configuration struct {
 	// Note that StoredVideo refers to stored video requests, and has nothing to do with caching video creatives.
 	StoredVideo     StoredRequests `mapstructure:"stored_video_req"`
 	StoredResponses StoredRequests `mapstructure:"stored_responses"`
+	BackendBridge   BackendBridge  `mapstructure:"backend_bridge"`
 	// StoredRequestsTimeout defines the number of milliseconds before a timeout occurs with stored requests fetch
 	StoredRequestsTimeout int `mapstructure:"stored_requests_timeout_ms"`
 
-	MaxRequestSize       int64             `mapstructure:"max_request_size"`
-	Analytics            Analytics         `mapstructure:"analytics"`
-	AMPTimeoutAdjustment int64             `mapstructure:"amp_timeout_adjustment_ms"`
-	GDPR                 GDPR              `mapstructure:"gdpr"`
-	CCPA                 CCPA              `mapstructure:"ccpa"`
-	LMT                  LMT               `mapstructure:"lmt"`
-	CurrencyConverter    CurrencyConverter `mapstructure:"currency_converter"`
-	DefReqConfig         DefReqConfig      `mapstructure:"default_request"`
+	MaxRequestSize       int64                  `mapstructure:"max_request_size"`
+	Analytics            map[string]interface{} `mapstructure:"analytics"`
+	AMPTimeoutAdjustment int64                  `mapstructure:"amp_timeout_adjustment_ms"`
+	GDPR                 GDPR                   `mapstructure:"gdpr"`
+	CCPA                 CCPA                   `mapstructure:"ccpa"`
+	LMT                  LMT                    `mapstructure:"lmt"`
+	CurrencyConverter    CurrencyConverter      `mapstructure:"currency_converter"`
+	DefReqConfig         DefReqConfig           `mapstructure:"default_request"`
 
 	VideoStoredRequestRequired bool `mapstructure:"video_stored_request_required"`
 
@@ -110,6 +111,16 @@ type Configuration struct {
 type Admin struct {
 	Enabled bool `mapstructure:"enabled"`
 }
+
+type BackendBridge struct {
+	Enabled          bool     `mapstructure:"enabled"`
+	BaseURL          string   `mapstructure:"base_url"`
+	TimeoutMS        int      `mapstructure:"timeout_ms"`
+	MaxResponseBytes int64    `mapstructure:"max_response_bytes"`
+	AllowedMethods   []string `mapstructure:"allowed_methods"`
+	AllowedPaths     []string `mapstructure:"allowed_paths"`
+}
+
 type PriceFloors struct {
 	Enabled bool              `mapstructure:"enabled"`
 	Fetcher PriceFloorFetcher `mapstructure:"fetcher"`
@@ -473,12 +484,6 @@ type CCPA struct {
 
 type LMT struct {
 	Enforce bool `mapstructure:"enforce"`
-}
-
-type Analytics struct {
-	File     FileLogs      `mapstructure:"file"`
-	Agma     AgmaAnalytics `mapstructure:"agma"`
-	Pubstack Pubstack      `mapstructure:"pubstack"`
 }
 
 type CurrencyConverter struct {

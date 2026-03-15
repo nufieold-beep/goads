@@ -594,10 +594,8 @@ type VideoExchangeEntry struct {
 	NetworkName string `json:"network_name,omitempty"`
 
 	// Video ad parameters
-	MinDuration int   `json:"min_duration"`
-	MaxDuration int   `json:"max_duration"`
-	Protocols   []int `json:"protocols,omitempty"`
-	APIs        []int `json:"apis,omitempty"`
+	MinDuration int `json:"min_duration"`
+	MaxDuration int `json:"max_duration"`
 
 	// Ad pod configuration (CTV)
 	PodDurationSec int `json:"pod_duration_sec,omitempty"`
@@ -605,9 +603,12 @@ type VideoExchangeEntry struct {
 	PodSequence    int `json:"pod_sequence,omitempty"`
 
 	// CTV companion & taxonomy
-	CompanionType []int  `json:"companion_type,omitempty"` // 1=Static, 2=HTML, 3=iframe
-	CatTax        int    `json:"cattax,omitempty"`          // IAB category taxonomy version
-	SellerDomain  string `json:"seller_domain,omitempty"`   // schain ASI domain for this exchange
+	CompanionType []int                  `json:"companion_type,omitempty"` // 1=Static, 2=HTML, 3=iframe
+	CatTax        int                    `json:"cattax,omitempty"`         // IAB category taxonomy version
+	SellerDomain  string                 `json:"seller_domain,omitempty"`  // schain ASI domain for this exchange
+	DomainOrApp   string                 `json:"domain_or_app,omitempty"`
+	ContentURL    string                 `json:"content_url,omitempty"`
+	TargetingExt  map[string]interface{} `json:"targeting_ext,omitempty"`
 
 	// Integration & source settings
 	IntegrationType string `json:"integration_type,omitempty"` // "tag_based"|"open_rtb"
@@ -651,11 +652,64 @@ type VideoExchangeListResponse struct {
 	Entries []*VideoExchangeEntry `json:"entries"`
 }
 
+func normalizeIntegrationType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "open_rtb", "openrtb", "ortb":
+		return "open_rtb"
+	case "tag_based", "tagbased", "vast", "vast_tag":
+		return "tag_based"
+	default:
+		return ""
+	}
+}
+
+func normalizeAuctionPriceType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "second", "second_price":
+		return "second"
+	default:
+		return "first"
+	}
+}
+
+func normalizeYieldPriority(value YieldPriority) YieldPriority {
+	switch strings.ToLower(strings.TrimSpace(string(value))) {
+	case "house":
+		return YieldPriorityHouseAd
+	case "programmatic", "premium", "guaranteed":
+		return YieldPriorityProgrammatic
+	default:
+		return YieldPriorityProgrammatic
+	}
+}
+
+func normalizeDemandPath(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "*", "any", "direct", "pmp":
+		return ""
+	case "open_auction", "open", "programmatic":
+		return "open_auction"
+	default:
+		return ""
+	}
+}
+
 // validate returns a human-readable error string if the entry is invalid, or "".
 func (e *VideoExchangeEntry) validate() string {
 	e.Name = strings.TrimSpace(e.Name)
+	e.DomainOrApp = strings.TrimSpace(e.DomainOrApp)
+	e.ContentURL = strings.TrimSpace(e.ContentURL)
+	e.SellerDomain = strings.TrimSpace(e.SellerDomain)
+	e.BundleID = strings.TrimSpace(e.BundleID)
+	e.AppName = strings.TrimSpace(e.AppName)
+	e.ChannelName = strings.TrimSpace(e.ChannelName)
+	e.NetworkName = strings.TrimSpace(e.NetworkName)
+	e.IntegrationType = normalizeIntegrationType(e.IntegrationType)
 	if e.Name == "" {
 		return "name is required"
+	}
+	if e.IntegrationType == "" {
+		return "integration_type must be one of: tag_based, open_rtb"
 	}
 	switch e.Environment {
 	case VideoEnvCTV, VideoEnvInApp:
@@ -758,7 +812,7 @@ func (h *VideoExchangeHandler) SyncAllToPipeline() {
 }
 
 // syncPipelineCfg builds an AdServerConfig from an Ad Unit entry (optionally resolving its
-// linked Campaign for direct demand routing) and registers it with the video pipeline.
+// linked Campaign for campaign demand routing) and registers it with the video pipeline.
 func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 	if h.registerCfg == nil {
 		return
@@ -766,11 +820,10 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 	cfg := &AdServerConfig{
 		PlacementID:    e.ID,
 		PublisherID:    e.PublisherID,
-		DomainOrApp:    e.BundleID,
+		DomainOrApp:    e.DomainOrApp,
+		ContentURL:     e.ContentURL,
 		MinDuration:    e.MinDuration,
 		MaxDuration:    e.MaxDuration,
-		Protocols:      e.Protocols,
-		APIs:           e.APIs,
 		AllowedBidders: e.Bidders,
 		FloorCPM:       e.FloorCPM,
 		CampaignID:     e.CampaignID,
@@ -782,6 +835,15 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 		CompanionType:  e.CompanionType,
 		CatTax:         e.CatTax,
 		SellerDomain:   e.SellerDomain,
+	}
+	if cfg.DomainOrApp == "" {
+		cfg.DomainOrApp = e.BundleID
+	}
+	if len(e.TargetingExt) > 0 {
+		cfg.TargetingExt = make(map[string]interface{}, len(e.TargetingExt))
+		for key, value := range e.TargetingExt {
+			cfg.TargetingExt[key] = value
+		}
 	}
 	cfg.VideoPlacementType = string(e.Placement)
 
@@ -809,11 +871,11 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 			if len(camp.MimeTypes) > 0 {
 				cfg.MimeTypes = camp.MimeTypes
 			}
-			// Store campaign protocols separately — these are the DEMAND-SIDE
-			// protocol capabilities and must NOT replace cfg.Protocols, which
-			// represents what the publisher's player can render (supply side).
 			if len(camp.Protocols) > 0 {
-				cfg.CampaignProtocols = camp.Protocols
+				cfg.Protocols = append([]int(nil), camp.Protocols...)
+			}
+			if len(camp.APIs) > 0 {
+				cfg.APIs = append([]int(nil), camp.APIs...)
 			}
 		}
 	}
@@ -1443,12 +1505,13 @@ type Campaign struct {
 	Status          string  `json:"status"` // "active" | "paused"
 
 	// Integration & OpenRTB settings
-	IntegrationType  string   `json:"integration_type,omitempty"` // "tag_based"|"open_rtb"|"direct_demand"|"prebid_server"
+	IntegrationType  string   `json:"integration_type,omitempty"` // "tag_based"|"open_rtb"
 	OrtbVersion      string   `json:"ortb_version,omitempty"`     // "2.5"|"2.6"|"3.0"
 	MimeTypes        []string `json:"mime_types,omitempty"`
 	Protocols        []int    `json:"protocols,omitempty"`          // IAB VAST protocol IDs (1–10)
+	APIs             []int    `json:"apis,omitempty"`               // API frameworks accepted by the demand endpoint
 	DemandTypes      []string `json:"demand_types,omitempty"`       // "video"|"display"|"audio"
-	AuctionType      string   `json:"auction_type,omitempty"`       // "open"|"pmp"
+	AuctionType      string   `json:"auction_type,omitempty"`       // always "open" for transparent open bidding
 	AuctionPriceType string   `json:"auction_price_type,omitempty"` // "first"|"second"
 
 	// Delivery caps
@@ -1505,11 +1568,25 @@ type Campaign struct {
 
 func (c *Campaign) validate() string {
 	c.Name = strings.TrimSpace(c.Name)
+	c.VASTTagURL = strings.TrimSpace(c.VASTTagURL)
+	c.OrtbEndpointURL = strings.TrimSpace(c.OrtbEndpointURL)
+	c.IntegrationType = normalizeIntegrationType(c.IntegrationType)
+	c.AuctionType = "open"
+	c.AuctionPriceType = normalizeAuctionPriceType(c.AuctionPriceType)
 	if c.Name == "" {
 		return "name is required"
 	}
 	if c.AdvertiserID == "" {
 		return "advertiser_id is required"
+	}
+	if c.IntegrationType == "" {
+		return "integration_type must be one of: tag_based, open_rtb"
+	}
+	if c.IntegrationType == "tag_based" && c.VASTTagURL == "" {
+		return "vast_tag_url is required when integration_type is tag_based"
+	}
+	if c.IntegrationType == "open_rtb" && c.OrtbEndpointURL == "" {
+		return "ortb_endpoint_url is required when integration_type is open_rtb"
 	}
 	if c.FloorCPM < 0 {
 		return "floor_cpm must be >= 0"
@@ -1719,8 +1796,6 @@ func (h *AudienceSegmentHandler) Delete() httprouter.Handle {
 type YieldPriority string
 
 const (
-	YieldPriorityPremium      YieldPriority = "premium"      // direct deals / guaranteed
-	YieldPriorityGuaranteed   YieldPriority = "guaranteed"   // reserved inventory
 	YieldPriorityProgrammatic YieldPriority = "programmatic" // open auction / header bidding
 	YieldPriorityHouseAd      YieldPriority = "house"        // fallback / self-promo
 )
@@ -1757,13 +1832,10 @@ type YieldRule struct {
 
 func (y *YieldRule) validate() string {
 	y.Name = strings.TrimSpace(y.Name)
+	y.Priority = normalizeYieldPriority(y.Priority)
+	y.AuctionType = normalizeAuctionPriceType(y.AuctionType) + "_price"
 	if y.Name == "" {
 		return "name is required"
-	}
-	switch y.Priority {
-	case YieldPriorityPremium, YieldPriorityGuaranteed, YieldPriorityProgrammatic, YieldPriorityHouseAd:
-	default:
-		y.Priority = YieldPriorityProgrammatic
 	}
 	if y.FloorCPM < 0 {
 		return "floor_cpm must be >= 0"
@@ -1813,7 +1885,7 @@ func (h *YieldRuleHandler) Delete() httprouter.Handle { return h.store.deleteHan
 // ═════════════════════════════════════════════════════════════════════════════
 
 // BidderScorecard tracks per-bidder reliability metrics used by the
-// optimization engine to route premium inventory to the best-performing demand.
+// optimization engine to route high-value inventory to the best-performing demand.
 type BidderScorecard struct {
 	ID         string `json:"id"`
 	BidderName string `json:"bidder_name"`
@@ -1926,7 +1998,7 @@ type DynamicFloorRule struct {
 	AutoAdjust     bool    `json:"auto_adjust"`
 	TargetFillRate float64 `json:"target_fill_rate,omitempty"` // 0–1, e.g. 0.85
 	FloorStepPct   float64 `json:"floor_step_pct,omitempty"`   // % change per cycle, e.g. 5.0
-	// Demand path scope: "direct"|"pmp"|"open_auction"|"*"
+	// Demand path scope: "open_auction"|"*"
 	DemandPath string    `json:"demand_path,omitempty"`
 	Priority   int       `json:"priority"` // higher value wins when segments overlap
 	Active     bool      `json:"active"`
@@ -1941,6 +2013,7 @@ func (d *DynamicFloorRule) setTimestamps(c, u time.Time) { d.CreatedAt = c; d.Up
 
 func (d *DynamicFloorRule) validate() string {
 	d.Name = strings.TrimSpace(d.Name)
+	d.DemandPath = normalizeDemandPath(d.DemandPath)
 	if d.Name == "" {
 		return "name is required"
 	}
@@ -2097,7 +2170,7 @@ func (h *RequestQAProfileHandler) Delete() httprouter.Handle {
 
 // TimeoutProfile defines the time budget for a specific inventory environment.
 // Separate profiles allow tighter deadlines for banner/mobile while allowing
-// more headroom for premium CTV pods.
+// more headroom for longer or higher-latency CTV pods.
 type TimeoutProfile struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -2107,7 +2180,7 @@ type TimeoutProfile struct {
 	BidderTimeoutMS int    `json:"bidder_timeout_ms"` // max time to wait for bidder responses
 	VASTTimeoutMS   int    `json:"vast_timeout_ms"`   // per VAST wrapper resolve step
 	NoBidGraceMS    int    `json:"no_bid_grace_ms"`   // extra grace after first bid arrives
-	// Auto-scaling — multiply total_budget_ms by premium_multiplier for high-value traffic
+	// Auto-scaling — multiply total_budget_ms by premium_multiplier for peak traffic windows
 	AutoScale         bool    `json:"auto_scale"`
 	PremiumMultiplier float64 `json:"premium_multiplier,omitempty"` // 1.0–2.0×
 	// Per-bidder timeout overrides (bidder name → timeout ms)
@@ -2181,7 +2254,7 @@ func (h *TimeoutProfileHandler) Delete() httprouter.Handle {
 // ═════════════════════════════════════════════════════════════════════════════
 
 // PodSlotValue sets a relative value multiplier for a specific slot within
-// a CTV ad pod (e.g. first slot at 1.3× floor).
+// a CTV ad pod (e.g. first slot at 1.3× floor weight).
 type PodSlotValue struct {
 	SlotIndex       int     `json:"slot_index"`       // 0-based; −1 = last slot
 	ValueMultiplier float64 `json:"value_multiplier"` // relative floor multiplier, e.g. 1.3
@@ -2200,7 +2273,7 @@ type PodOptimizationRule struct {
 	MinSlotDurationSec int `json:"min_slot_duration_sec,omitempty"`
 	MaxSlotDurationSec int `json:"max_slot_duration_sec,omitempty"`
 	// Slot-level value multipliers
-	FirstSlotPremium float64        `json:"first_slot_premium,omitempty"` // e.g. 1.3 = 30% premium
+	FirstSlotPremium float64        `json:"first_slot_premium,omitempty"` // e.g. 1.3 = 30% weight increase
 	LastSlotPremium  float64        `json:"last_slot_premium,omitempty"`
 	SlotValues       []PodSlotValue `json:"slot_values,omitempty"`
 	// Competitive separation

@@ -1,0 +1,17 @@
+package build
+
+import (
+{{- if .Imports }}
+{{- range .Imports }}
+	{{ .Alias }} "github.com/prebid/prebid-server/v4/analytics/modules/{{ .Dir }}"
+{{- end }}
+{{- end }}
+)
+
+func builders() AnalyticsModuleBuilders {
+	return AnalyticsModuleBuilders{
+{{- range .Modules }}
+		"{{ .Key }}": {{ .Alias }}.Builder,
+{{- end }}
+	}
+}

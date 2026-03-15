@@ -262,7 +262,7 @@ func New(cfg *config.Configuration, rateConverter *currency.RateConverter) (r *R
 	r.MetricsEngine = metricsConf.NewMetricsEngine(cfg, openrtb_ext.CoreBidderNames(), syncerKeys, moduleStageNames)
 	shutdown, fetcher, ampFetcher, accounts, categoriesFetcher, videoFetcher, storedRespFetcher := storedRequestsConf.NewStoredRequests(cfg, r.MetricsEngine, generalHttpClient, r.Router)
 
-	analyticsRunner := analyticsBuild.New(&cfg.Analytics)
+	analyticsRunner := analyticsBuild.New(cfg.Analytics)
 
 	paramsValidator, err := openrtb_ext.NewBidderParamsValidator(schemaDirectory)
 	if err != nil {
@@ -364,6 +364,7 @@ func New(cfg *config.Configuration, rateConverter *currency.RateConverter) (r *R
 	r.GET("/dashboard/audience", auth(endpoints.NewDashboardHandler()))
 	r.GET("/dashboard/optimization", auth(endpoints.NewDashboardHandler()))
 	r.GET("/dashboard/quality", auth(endpoints.NewDashboardHandler()))
+	r.GET("/dashboard/backend", auth(endpoints.NewDashboardHandler()))
 	r.GET("/dashboard/stats", auth(endpoints.NewDashboardStatsHandler(r.MetricsEngine)))
 
 	// Dashboard CRUD — all entities registered via a single central registry.
@@ -391,6 +392,7 @@ func New(cfg *config.Configuration, rateConverter *currency.RateConverter) (r *R
 	r.GET("/video/tracking/events", auth(videoPipeline.TrackingEventsEndpoint()))
 	r.GET("/video/adserver", auth(videoPipeline.AdServerConfigEndpoint()))
 	r.POST("/video/adserver", auth(videoPipeline.AdServerConfigEndpoint()))
+	r.DELETE("/video/adserver/:placement_id", auth(videoPipeline.AdServerConfigEndpoint()))
 	r.GET("/dashboard/stats/video", auth(videoPipeline.VideoStatsEndpoint()))
 	r.POST("/dashboard/stats/reset", auth(videoPipeline.ResetStatsEndpoint()))
 	r.GET("/dashboard/config", auth(videoPipeline.DashboardConfigEndpoint()))
@@ -404,6 +406,7 @@ func New(cfg *config.Configuration, rateConverter *currency.RateConverter) (r *R
 
 	// Dashboard – External Statistics API proxy (admin-only, HTTPS only)
 	r.POST("/dashboard/ext-stats/fetch", auth(endpoints.NewExtStatsFetchHandler()))
+	r.POST("/dashboard/backend/bridge", auth(endpoints.NewBackendBridgeHandler(generalHttpClient, cfg.BackendBridge)))
 
 	// vtrack endpoint
 	if cfg.VTrack.Enabled {

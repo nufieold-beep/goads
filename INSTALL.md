@@ -103,6 +103,33 @@ stored_responses:
 > **Note:** `pbs.yaml` is never committed to this repository (excluded by
 > `.gitignore`) to keep credentials out of source control.
 
+### Environment variables for storage and analytics
+
+Set these before starting the server when you want dashboard CRUD and runtime
+ad server config persistence to use PostgreSQL, and video analytics to use
+ClickHouse.
+
+```bash
+export DASH_ADMIN_USER=admin
+export DASH_ADMIN_PASS=change-me
+
+# Primary CRUD / admin persistence
+export DASH_DB_DSN='postgres://user:pass@127.0.0.1:5432/goads?sslmode=disable'
+
+# Primary video analytics / metrics fact store
+export CLICKHOUSE_DSN='clickhouse://127.0.0.1:9000?database=goads'
+
+# Optional: override the ClickHouse fact table name
+export CLICKHOUSE_VIDEO_TABLE='video_event_facts'
+```
+
+Persistence behavior:
+
+- Dashboard CRUD entities and `/video/adserver` runtime routing configs use PostgreSQL when `DASH_DB_DSN` is set.
+- Video analytics facts use ClickHouse when `CLICKHOUSE_DSN` is set.
+- Impression-confirmed revenue and impression counts are derived from the player firing `/video/impression`.
+- Requests and opportunities are stored as event facts too, but headline analytics formulas treat the impression beacon as the source of truth for billable delivery.
+
 ---
 
 ## 5 — Run the server
@@ -204,6 +231,34 @@ curl http://localhost:6060/metrics
 ```
 
 Expected `/status` response: `ok`
+
+To verify the persistence backends:
+
+```bash
+# PostgreSQL-backed dashboard CRUD
+psql "$DASH_DB_DSN" -c "select kind, count(*) from dashboard_entities group by kind order by kind;"
+
+# ClickHouse-backed video analytics
+clickhouse-client --query "select event_type, count() from goads.video_event_facts group by event_type order by event_type"
+```
+
+Or run the repo-provided smoke test against a running local server:
+
+```bash
+BASE_URL=http://localhost:8000 \
+DASH_ADMIN_USER=admin \
+DASH_ADMIN_PASS=change-me \
+DASH_DB_DSN='postgres://user:pass@127.0.0.1:5432/goads?sslmode=disable' \
+CLICKHOUSE_DSN='clickhouse://127.0.0.1:9000?database=goads' \
+make smoke-storage-analytics
+```
+
+That smoke test will:
+
+- create dashboard entities through the live CRUD API,
+- confirm records exist in PostgreSQL,
+- fire `/video/impression`, and
+- confirm the impression fact lands in ClickHouse.
 
 ---
 

@@ -104,6 +104,8 @@ func executeHook[H any, P any](
 	hookRespCh := make(chan hookResponse[P], 1)
 	startTime := time.Now()
 	hookId := HookID{ModuleCode: hw.Module, HookImplCode: hw.Code}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
 	go func() {
 		defer func() {
@@ -113,8 +115,6 @@ func executeHook[H any, P any](
 			}
 		}()
 
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
 		result, err := hookHandler(ctx, moduleCtx, hw.Hook, payload)
 		hookRespCh <- hookResponse[P]{
 			Result: result,
@@ -127,7 +127,7 @@ func executeHook[H any, P any](
 		res.HookID = hookId
 		res.ExecutionTime = time.Since(startTime)
 		resp <- res
-	case <-time.After(timeout):
+	case <-ctx.Done():
 		resp <- hookResponse[P]{
 			Err:           TimeoutError{},
 			ExecutionTime: time.Since(startTime),
