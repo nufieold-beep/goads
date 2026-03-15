@@ -2513,6 +2513,18 @@ func statsWindowSeconds(startedAt int64) (dayWindowSeconds, hourWindowSeconds in
 	return dayWindowSeconds, hourWindowSeconds
 }
 
+func qpsFromRecentRequests(recentRequests map[string]int64, entityID string, fallbackRequests, windowSeconds int64) int64 {
+	if windowSeconds < 1 {
+		windowSeconds = 1
+	}
+	if recentRequests != nil {
+		if recent, ok := recentRequests[entityID]; ok {
+			return recent / windowSeconds
+		}
+	}
+	return fallbackRequests / windowSeconds
+}
+
 // List handles GET /dashboard/supply-partners.
 // When a statsProvider is wired it overlays live pipeline metrics onto each
 // record so the Revenue Console always shows up-to-date numbers without a
@@ -2530,8 +2542,8 @@ func (h *SupplyPartnerHandler) List() httprouter.Handle {
 					e.GrossRevenue = vs.Revenue
 					e.Impressions = vs.Impressions
 					e.Completions = vs.Completes
-					e.AvgQpsYesterday = vs.AdRequests / dayWindowSeconds
-					e.AvgQpsLastHour = vs.AdRequests / hourWindowSeconds
+					e.AvgQpsYesterday = qpsFromRecentRequests(snap.PublisherRequestsLastDay, e.ID, vs.AdRequests, dayWindowSeconds)
+					e.AvgQpsLastHour = qpsFromRecentRequests(snap.PublisherRequestsLastHour, e.ID, vs.AdRequests, hourWindowSeconds)
 				}
 			}
 		}
@@ -2687,8 +2699,8 @@ func (h *DemandPartnerHandler) List() httprouter.Handle {
 					e.GrossRevenue = vs.Revenue
 					e.Payout = vs.Revenue // Payout = Gross Revenue
 					e.Completions = vs.Completes
-					e.AvgQpsYesterday = vs.AdRequests / dayWindowSeconds
-					e.AvgQpsLastHour = vs.AdRequests / hourWindowSeconds
+					e.AvgQpsYesterday = qpsFromRecentRequests(snap.AdvertiserRequestsLastDay, e.ID, vs.AdRequests, dayWindowSeconds)
+					e.AvgQpsLastHour = qpsFromRecentRequests(snap.AdvertiserRequestsLastHour, e.ID, vs.AdRequests, hourWindowSeconds)
 				}
 			}
 		}

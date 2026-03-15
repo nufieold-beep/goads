@@ -209,15 +209,19 @@ func (s *clickHouseVideoMetricsStore) insertBatch(ctx context.Context, batch []v
 
 func (s *clickHouseVideoMetricsStore) Snapshot(ctx context.Context) (VideoStatsPayload, error) {
 	result := VideoStatsPayload{
-		ByPublisher:     map[string]*VideoStats{},
-		ByAdvertiser:    map[string]*VideoStats{},
-		ByBidder:        map[string]*VideoStats{},
-		ByApp:           map[string]*VideoStats{},
-		ByPlacement:     map[string]*VideoStats{},
-		ByCountry:       map[string]*VideoStats{},
-		ByDevice:        map[string]*VideoStats{},
-		ByFormat:        map[string]*VideoStats{},
-		ByDemandChannel: map[string]*VideoStats{},
+		ByPublisher:                map[string]*VideoStats{},
+		ByAdvertiser:               map[string]*VideoStats{},
+		ByBidder:                   map[string]*VideoStats{},
+		ByApp:                      map[string]*VideoStats{},
+		ByPlacement:                map[string]*VideoStats{},
+		ByCountry:                  map[string]*VideoStats{},
+		ByDevice:                   map[string]*VideoStats{},
+		ByFormat:                   map[string]*VideoStats{},
+		ByDemandChannel:            map[string]*VideoStats{},
+		PublisherRequestsLastDay:   map[string]int64{},
+		PublisherRequestsLastHour:  map[string]int64{},
+		AdvertiserRequestsLastDay:  map[string]int64{},
+		AdvertiserRequestsLastHour: map[string]int64{},
 	}
 	if s == nil || s.db == nil {
 		return result, nil
@@ -256,7 +260,62 @@ func (s *clickHouseVideoMetricsStore) Snapshot(ctx context.Context) (VideoStatsP
 	if result.StartedAt, err = s.queryStartedAt(ctx); err != nil {
 		return result, err
 	}
+	startedAt := time.Unix(result.StartedAt, 0).UTC()
+	now := time.Now().UTC()
+	dayStart := now.Add(-24 * time.Hour)
+	if startedAt.After(dayStart) {
+		dayStart = startedAt
+	}
+	hourStart := now.Add(-1 * time.Hour)
+	if startedAt.After(hourStart) {
+		hourStart = startedAt
+	}
+	if result.PublisherRequestsLastDay, err = s.queryRequestCountsByGroup(ctx, "publisher_id", dayStart, now); err != nil {
+		return result, err
+	}
+	if result.PublisherRequestsLastHour, err = s.queryRequestCountsByGroup(ctx, "publisher_id", hourStart, now); err != nil {
+		return result, err
+	}
+	if result.AdvertiserRequestsLastDay, err = s.queryRequestCountsByGroup(ctx, "advertiser_id", dayStart, now); err != nil {
+		return result, err
+	}
+	if result.AdvertiserRequestsLastHour, err = s.queryRequestCountsByGroup(ctx, "advertiser_id", hourStart, now); err != nil {
+		return result, err
+	}
 	return result, nil
+}
+
+func (s *clickHouseVideoMetricsStore) queryRequestCountsByGroup(ctx context.Context, column string, start, end time.Time) (map[string]int64, error) {
+	allowed := map[string]bool{
+		"publisher_id":  true,
+		"advertiser_id": true,
+	}
+	if !allowed[column] {
+		return nil, fmt.Errorf("unsupported request-count column %q", column)
+	}
+	query := fmt.Sprintf(`
+		SELECT
+			if(%[1]s = '', '(unknown)', %[1]s) AS dim,
+			count() AS request_count
+		FROM %s
+		WHERE event_type = 'request' AND event_time >= ? AND event_time < ?
+		GROUP BY dim
+	`, column, s.table)
+	rows, err := s.db.QueryContext(ctx, query, start.UTC(), end.UTC())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var key string
+		var count int64
+		if err := rows.Scan(&key, &count); err != nil {
+			return nil, err
+		}
+		out[key] = count
+	}
+	return out, rows.Err()
 }
 
 func (s *clickHouseVideoMetricsStore) queryGrouped(ctx context.Context, column string) (map[string]*VideoStats, error) {

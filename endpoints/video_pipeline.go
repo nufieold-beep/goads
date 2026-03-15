@@ -609,17 +609,21 @@ type VideoStats struct {
 
 // VideoStatsPayload is the JSON payload returned by /dashboard/stats/video.
 type VideoStatsPayload struct {
-	ByPublisher     map[string]*VideoStats `json:"by_publisher"`
-	ByAdvertiser    map[string]*VideoStats `json:"by_advertiser"`
-	ByBidder        map[string]*VideoStats `json:"by_bidder"`
-	ByApp           map[string]*VideoStats `json:"by_app"`
-	ByPlacement     map[string]*VideoStats `json:"by_placement"`
-	ByCountry       map[string]*VideoStats `json:"by_country"`
-	ByDevice        map[string]*VideoStats `json:"by_device"`
-	ByFormat        map[string]*VideoStats `json:"by_format"`
-	ByDemandChannel map[string]*VideoStats `json:"by_demand_channel"`
-	Total           VideoStats             `json:"total"`
-	StartedAt       int64                  `json:"started_at"` // Unix timestamp of server start; used for QPS calculations
+	ByPublisher                map[string]*VideoStats `json:"by_publisher"`
+	ByAdvertiser               map[string]*VideoStats `json:"by_advertiser"`
+	ByBidder                   map[string]*VideoStats `json:"by_bidder"`
+	ByApp                      map[string]*VideoStats `json:"by_app"`
+	ByPlacement                map[string]*VideoStats `json:"by_placement"`
+	ByCountry                  map[string]*VideoStats `json:"by_country"`
+	ByDevice                   map[string]*VideoStats `json:"by_device"`
+	ByFormat                   map[string]*VideoStats `json:"by_format"`
+	ByDemandChannel            map[string]*VideoStats `json:"by_demand_channel"`
+	PublisherRequestsLastDay   map[string]int64       `json:"publisher_requests_last_day,omitempty"`
+	PublisherRequestsLastHour  map[string]int64       `json:"publisher_requests_last_hour,omitempty"`
+	AdvertiserRequestsLastDay  map[string]int64       `json:"advertiser_requests_last_day,omitempty"`
+	AdvertiserRequestsLastHour map[string]int64       `json:"advertiser_requests_last_hour,omitempty"`
+	Total                      VideoStats             `json:"total"`
+	StartedAt                  int64                  `json:"started_at"` // Unix timestamp of server start; used for QPS calculations
 }
 
 type VideoOverviewSummary struct {
