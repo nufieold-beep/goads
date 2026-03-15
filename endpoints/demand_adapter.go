@@ -536,6 +536,9 @@ func truncateURL(u string, maxLen int) string {
 // It is used by vastToVASTAdapter and ortbToVASTAdapter.
 // ua is forwarded as the User-Agent header (pass empty string to omit).
 func (h *VideoPipelineHandler) fetchVAST(ctx context.Context, vastURL string, ua string) (string, error) {
+	if err := validateOutboundPublicURL(vastURL); err != nil {
+		return "", fmt.Errorf("invalid demand VAST url: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, vastURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("build VAST request: %w", err)
