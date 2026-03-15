@@ -3695,7 +3695,7 @@ func (h *VideoPipelineHandler) buildVASTWrapperDoc(
 		Ad: []vastAd{{
 			ID: win.BidID,
 			Wrapper: &vastWrapper{
-				AdSystem:       "AdZrvr",
+				AdSystem:       "Viadsmedia",
 				VASTAdTagURI:   vastCDATA{Text: tagURI},
 				Impression:     impressions,
 				TrackingEvents: te,
@@ -3754,7 +3754,7 @@ func (h *VideoPipelineHandler) buildVASTInlineDoc(
 		Ad: []vastAd{{
 			ID: win.BidID,
 			Inline: &vastInline{
-				AdSystem:   "AdZrvr",
+				AdSystem:   "Viadsmedia",
 				AdTitle:    "Video Ad",
 				Impression: impressions,
 				Creatives: vastCreatives{
