@@ -832,6 +832,31 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 	if h.registerCfg == nil {
 		return
 	}
+	resolvedCampaignID := e.CampaignID
+	if resolvedCampaignID == "" {
+		for _, campaignID := range e.DemandLinks {
+			if campaignID == "" || h.campStore == nil {
+				continue
+			}
+			if _, ok := h.campStore.get(campaignID); ok {
+				resolvedCampaignID = campaignID
+				break
+			}
+		}
+	}
+	if resolvedCampaignID == "" && h.campStore != nil {
+		for _, campaign := range h.campStore.list() {
+			for _, supplyID := range campaign.SupplyLinks {
+				if supplyID == e.ID {
+					resolvedCampaignID = campaign.ID
+					break
+				}
+			}
+			if resolvedCampaignID != "" {
+				break
+			}
+		}
+	}
 	cfg := &AdServerConfig{
 		PlacementID:    e.ID,
 		PublisherID:    e.PublisherID,
@@ -841,7 +866,7 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 		MaxDuration:    e.MaxDuration,
 		AllowedBidders: e.Bidders,
 		FloorCPM:       e.FloorCPM,
-		CampaignID:     e.CampaignID,
+		CampaignID:     resolvedCampaignID,
 		Active:         e.Active,
 		TimeoutMS:      e.TimeoutMS,
 		PodDuration:    e.PodDurationSec,
@@ -863,8 +888,8 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 	cfg.VideoPlacementType = string(e.Placement)
 
 	// Resolve linked Campaign demand endpoint and settings.
-	if e.CampaignID != "" && h.campStore != nil {
-		if camp, ok := h.campStore.get(e.CampaignID); ok {
+	if resolvedCampaignID != "" && h.campStore != nil {
+		if camp, ok := h.campStore.get(resolvedCampaignID); ok {
 			cfg.DemandVASTURL = camp.VASTTagURL
 			cfg.DemandOrtbURL = camp.OrtbEndpointURL
 			cfg.AdvertiserID = camp.AdvertiserID

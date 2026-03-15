@@ -107,3 +107,44 @@ func TestVideoExchangeSyncPipelineCfgFallsBackToBundleID(t *testing.T) {
 		t.Fatalf("expected bundle_id fallback, got %q", registered.DomainOrApp)
 	}
 }
+
+func TestVideoExchangeSyncPipelineCfgUsesReverseSupplyLinkWhenCampaignIDMissing(t *testing.T) {
+	handler := NewVideoExchangeHandler("")
+	campaigns := newCampaignStore("")
+	handler.SetCampaignStore(campaigns)
+
+	var registered *AdServerConfig
+	handler.SetPipelineRegister(func(cfg *AdServerConfig) {
+		registered = cfg
+	})
+
+	campaign := campaigns.create(&Campaign{
+		Name:            "Reverse Linked Campaign",
+		AdvertiserID:    "adv-2",
+		PublisherID:     "pub-2",
+		OrtbEndpointURL: "https://demand.example/reverse-openrtb",
+		IntegrationType: "open_rtb",
+		Status:          "active",
+		SupplyLinks:     []string{"placement-reverse"},
+	})
+
+	handler.syncPipelineCfg(&VideoExchangeEntry{
+		ID:          "placement-reverse",
+		PublisherID: "pub-2",
+		Environment: VideoEnvCTV,
+		Placement:   PlacementInStream,
+		MinDuration: 15,
+		MaxDuration: 30,
+		Active:      true,
+	})
+
+	if registered == nil {
+		t.Fatal("expected config to be registered")
+	}
+	if registered.CampaignID != campaign.ID {
+		t.Fatalf("expected reverse-linked campaign id %q, got %q", campaign.ID, registered.CampaignID)
+	}
+	if registered.DemandOrtbURL != "https://demand.example/reverse-openrtb" {
+		t.Fatalf("expected reverse-linked ortb url, got %q", registered.DemandOrtbURL)
+	}
+}
