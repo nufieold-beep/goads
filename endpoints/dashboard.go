@@ -2954,10 +2954,46 @@ func (b *BidReportEntry) validate() string {
 	return ""
 }
 
-type bidReportStore = entityStore[*BidReportEntry]
+type bidReportStore struct{ *entityStore[*BidReportEntry] }
 
 func newBidReportStore(fp string) *bidReportStore {
-	return newEntityStore[*BidReportEntry](fp, "bid-reports")
+	return &bidReportStore{entityStore: newEntityStore[*BidReportEntry](fp, "bid-reports")}
+}
+
+func (s *bidReportStore) create(e *BidReportEntry) *BidReportEntry {
+	e.setID(generateID())
+	now := time.Now().UTC()
+	e.setTimestamps(now, now)
+	s.mu.Lock()
+	s.entries[e.getID()] = e
+	s.mu.Unlock()
+	if getDashDB() != nil {
+		safeGo(func() { s.persistOne(e) })
+		return e
+	}
+	safeGo(s.save)
+	return e
+}
+
+func (s *bidReportStore) persistOne(e *BidReportEntry) {
+	db := getDashDB()
+	if db == nil || e == nil {
+		return
+	}
+	b, err := json.Marshal(e)
+	if err != nil {
+		log.Printf("%s store: marshal: %v", s.label, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO dashboard_entities(kind,id,payload) VALUES ($1,$2,$3)
+		 ON CONFLICT (kind,id) DO UPDATE SET payload=EXCLUDED.payload`,
+		s.label, e.getID(), b,
+	); err != nil {
+		log.Printf("%s store: upsert: %v", s.label, err)
+	}
 }
 
 // BidReportHandler manages push/pull of BidReportEntry records.
