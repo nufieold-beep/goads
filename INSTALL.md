@@ -161,6 +161,62 @@ Default ports:
 
 ## 6 — Deploy as a systemd service (Linux)
 
+### One-step remote deploy from macOS or Linux
+
+For repeatable updates to a dedicated Linux server, use the bundled remote
+deploy script. It cross-compiles a Linux binary locally, creates a clean tarball
+ without macOS `._*` metadata files, uploads it, writes the systemd unit, and
+restarts the service.
+
+Required environment variables:
+
+```bash
+export DEPLOY_HOST=107.150.46.2
+export DASH_ADMIN_PASS='change-me-now'
+```
+
+Optional variables:
+
+```bash
+export DEPLOY_USER=root
+export DEPLOY_PORT=22
+export DEPLOY_PASS='ssh-password-if-not-using-keys'
+export DEPLOY_CONFIG_FILE=/absolute/path/to/pbs.yaml
+export DEPLOY_EXTERNAL_URL='http://107.150.46.2'
+export DASH_ADMIN_USER=admin
+export DASH_DB_DSN='postgres://user:pass@127.0.0.1:5432/goads?sslmode=disable'
+export CLICKHOUSE_DSN='clickhouse://127.0.0.1:9000?database=goads'
+export CLICKHOUSE_VIDEO_TABLE='video_event_facts'
+```
+
+Run it:
+
+```bash
+./scripts/deploy_remote_linux.sh
+```
+
+Or via Make:
+
+```bash
+make deploy-remote-linux
+```
+
+Notes:
+
+- `DASH_ADMIN_PASS` is mandatory. The application refuses to start without it.
+- If `DEPLOY_CONFIG_FILE` is unset, the script generates a minimal `pbs.yaml`
+  using `DEPLOY_EXTERNAL_URL` or `http://$DEPLOY_HOST`.
+- If `DEPLOY_PASS` is set, the script uses `expect` for password-based `ssh` and
+  `scp`. Otherwise it uses your normal SSH key flow.
+- If `DASH_DB_DSN`, `CLICKHOUSE_DSN`, or `CLICKHOUSE_VIDEO_TABLE` are set, the
+  script writes them to `/etc/prebid-server/database.env` on the remote host and
+  the systemd unit loads that file automatically.
+- If those DB variables are not set during a later deploy, the script preserves
+  the existing `/etc/prebid-server/database.env` contents instead of clearing
+  the database configuration.
+- The deploy bundle excludes `.DS_Store` and `._*` files and also deletes any
+  stray copies on the target host before restarting the service.
+
 ```bash
 # copy binary
 sudo cp prebid-server-linux /opt/prebid-server/prebid-server

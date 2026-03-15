@@ -76,3 +76,21 @@ func TestWithResolvedTimeoutReusesEarlierParentDeadline(t *testing.T) {
 		t.Fatal("withResolvedTimeout should reuse parent context when parent deadline is earlier")
 	}
 }
+
+func TestWithResolvedTimeoutPropagatesParentCancellation(t *testing.T) {
+	parent, parentCancel := context.WithCancel(context.Background())
+	ctx, cancel := withResolvedTimeout(parent, time.Second)
+	defer cancel()
+
+	parentCancel()
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("withResolvedTimeout should propagate parent cancellation")
+	}
+
+	if err := ctx.Err(); err != context.Canceled {
+		t.Fatalf("ctx.Err() = %v, want %v", err, context.Canceled)
+	}
+}

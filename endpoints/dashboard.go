@@ -1642,7 +1642,21 @@ func (h *CampaignHandler) SetOnChange(fn func()) { h.onChange = fn }
 
 func (h *CampaignHandler) List() httprouter.Handle { return h.store.listHandle() }
 func (h *CampaignHandler) Create() httprouter.Handle {
-	return h.store.createHandle(func() *Campaign { return &Campaign{} })
+	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		campaign := &Campaign{}
+		if !decodeBody(w, r, campaign) {
+			return
+		}
+		if msg := campaign.validate(); msg != "" {
+			writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+		created := h.store.create(campaign)
+		if h.onChange != nil {
+			safeGo(h.onChange)
+		}
+		writeJSON(w, http.StatusCreated, created)
+	}
 }
 func (h *CampaignHandler) Get() httprouter.Handle { return h.store.getHandle("campaign") }
 

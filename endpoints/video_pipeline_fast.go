@@ -2,7 +2,6 @@ package endpoints
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -56,7 +55,7 @@ func (h *VideoPipelineHandler) HandleFastVAST(ctx *fasthttp.RequestCtx) {
 	cfgCopy.RequestBaseURL = requestBaseURLFast(ctx)
 	adsCfg = &cfgCopy
 
-	requestCtx, cancel := context.WithTimeout(context.Background(), resolveEndpointTimeout(adsCfg, req))
+	requestCtx, cancel := withResolvedTimeout(ctx, resolveEndpointTimeout(adsCfg, req))
 	defer cancel()
 
 	h.videoStats.incRequestBatch(adsCfg.PublisherID, adsCfg.AdvertiserID)
@@ -106,7 +105,7 @@ func (h *VideoPipelineHandler) HandleFastORTB(ctx *fasthttp.RequestCtx) {
 	cfgCopy.RequestBaseURL = requestBaseURLFast(ctx)
 	adsCfg = &cfgCopy
 
-	requestCtx, cancel := context.WithTimeout(context.Background(), resolveEndpointTimeout(adsCfg, req))
+	requestCtx, cancel := withResolvedTimeout(ctx, resolveEndpointTimeout(adsCfg, req))
 	defer cancel()
 
 	h.videoStats.incRequestBatch(adsCfg.PublisherID, adsCfg.AdvertiserID)

@@ -2,7 +2,7 @@
 
 all: deps test build-modules build
 
-.PHONY: deps test build-modules build build-analytics image format smoke-storage-analytics smoke-demand-forwarding smoke-nurl-vast-modes bench-fasthttp loadtest-status loadtest-video-tracking
+.PHONY: deps test build-modules build build-analytics image format smoke-storage-analytics smoke-demand-forwarding smoke-nurl-vast-modes bench-fasthttp loadtest-status loadtest-video-tracking soak-fastpaths deploy-remote-linux
 
 # deps will clean out the vendor directory and use go mod for a fresh install
 deps:
@@ -63,6 +63,17 @@ loadtest-status:
 # a running local server without relying on external demand.
 loadtest-video-tracking:
 	go run ./cmd/fasthttp-loadtest -url 'http://127.0.0.1:8000/video/tracking?auction_id=bench-auction&bid_id=bench-bid&bidder=bench&event=start&placement_id=bench-placement&price=1.23' -concurrency 200 -duration 15s
+
+# soak-fastpaths runs a longer sequential soak over the native hot paths against
+# a running server. Set ORTB_URL and VAST_URL to include provisioned placements.
+soak-fastpaths:
+	./scripts/soak_local_fastpaths.sh
+
+# deploy-remote-linux builds a Linux binary locally, strips macOS metadata from
+# the bundle, uploads it to a remote host, and restarts the systemd service
+# while preserving optional PostgreSQL and ClickHouse env configuration.
+deploy-remote-linux:
+	./scripts/deploy_remote_linux.sh
 
 # format runs format
 format:
