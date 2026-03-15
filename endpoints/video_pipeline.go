@@ -107,11 +107,13 @@ func safeGo(fn func()) {
 // ExtraDemandCfg holds a secondary/fallback demand endpoint used in waterfall
 // when the primary demand source (DemandVASTURL / DemandOrtbURL) returns no fill.
 type ExtraDemandCfg struct {
-	VASTTagURL string   `json:"vast_tag_url,omitempty"`
-	OrtbURL    string   `json:"ortb_url,omitempty"`
-	FloorCPM   float64  `json:"floor_cpm,omitempty"`
-	BCat       []string `json:"bcat,omitempty"`
-	BAdv       []string `json:"badv,omitempty"`
+	VASTTagURL   string   `json:"vast_tag_url,omitempty"`
+	OrtbURL      string   `json:"ortb_url,omitempty"`
+	FloorCPM     float64  `json:"floor_cpm,omitempty"`
+	CampaignID   string   `json:"campaign_id,omitempty"`
+	AdvertiserID string   `json:"advertiser_id,omitempty"`
+	BCat         []string `json:"bcat,omitempty"`
+	BAdv         []string `json:"badv,omitempty"`
 }
 
 type AdServerConfig struct {
@@ -1531,6 +1533,14 @@ type demandResult struct {
 	resp  *DemandResponse
 	err   error
 	label string
+	cfg   *AdServerConfig
+}
+
+func winnerTelemetryConfig(primary *AdServerConfig, resp *DemandResponse) *AdServerConfig {
+	if resp != nil && resp.WinnerConfig != nil {
+		return resp.WinnerConfig
+	}
+	return primary
 }
 
 // runDemandWaterfall fires the primary demand adapter AND all ExtraDemand
@@ -1545,6 +1555,9 @@ func (h *VideoPipelineHandler) runDemandWaterfall(
 	if len(adsCfg.ExtraDemand) == 0 {
 		primaryAdapter := h.adapterRouter(RouterKey{inbound, resolveDemandType(adsCfg)})
 		resp, err := primaryAdapter.Execute(ctx, req, adsCfg)
+		if resp != nil && resp.WinnerConfig == nil {
+			resp.WinnerConfig = adsCfg
+		}
 		if err != nil {
 			log.Printf("runDemandWaterfall: primary adapter error for placement %s: %v",
 				req.PlacementID, err)
@@ -1560,7 +1573,7 @@ func (h *VideoPipelineHandler) runDemandWaterfall(
 		s := src
 		safeGo(func() {
 			resp, err := s.adapter.Execute(ctx, req, s.cfg)
-			ch <- demandResult{resp: resp, err: err, label: s.label}
+			ch <- demandResult{resp: resp, err: err, label: s.label, cfg: s.cfg}
 		})
 	}
 
@@ -1580,6 +1593,9 @@ func (h *VideoPipelineHandler) runDemandWaterfall(
 		if r.resp == nil || r.resp.NoFill {
 			noFillCount++
 			continue
+		}
+		if r.resp.WinnerConfig == nil {
+			r.resp.WinnerConfig = r.cfg
 		}
 		// Highest WinPrice wins.
 		if best == nil || r.resp.WinPrice > best.WinPrice {
@@ -1628,6 +1644,12 @@ func (h *VideoPipelineHandler) buildDemandSources(
 		extraCfg.DemandOrtbURL = extra.OrtbURL
 		if extra.FloorCPM > 0 {
 			extraCfg.DemandFloorCPM = extra.FloorCPM
+		}
+		if extra.CampaignID != "" {
+			extraCfg.CampaignID = extra.CampaignID
+		}
+		if extra.AdvertiserID != "" {
+			extraCfg.AdvertiserID = extra.AdvertiserID
 		}
 		if len(extra.BCat) > 0 {
 			extraCfg.BCat = extra.BCat
@@ -1737,10 +1759,11 @@ func (h *VideoPipelineHandler) VASTEndpoint() httprouter.Handle {
 		}
 
 		if !resp.NoFill {
-			h.videoStats.incFillBatch(adsCfg.PublisherID, adsCfg.AdvertiserID)
-			h.videoStats.incDimFill(adsCfg, req, resp, resolveDemandType(adsCfg))
-			h.recordOpportunityMetric(req, adsCfg, resp)
-			h.recordBidReport(adsCfg, req, resp, "win")
+			winnerCfg := winnerTelemetryConfig(adsCfg, resp)
+			h.videoStats.incFillBatch(winnerCfg.PublisherID, winnerCfg.AdvertiserID)
+			h.videoStats.incDimFill(winnerCfg, req, resp, resolveDemandType(winnerCfg))
+			h.recordOpportunityMetric(req, winnerCfg, resp)
+			h.recordBidReport(winnerCfg, req, resp, "win")
 		}
 		h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
 		h.metricsEng.RecordRequestTime(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusOK}, time.Since(start))
@@ -1809,7 +1832,8 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 		// Resolve and fire NURL/BURL for the winning bid on server side so that
 		// auction macros are applied and the client never double-fires win notices.
 		if !resp.NoFill && resp.BidResp != nil {
-			if win, bidder, werr := h.extractWinningBid(resp.BidResp, adsCfg); werr == nil && win != nil {
+			winnerCfg := winnerTelemetryConfig(adsCfg, resp)
+			if win, bidder, werr := h.extractWinningBid(resp.BidResp, winnerCfg); werr == nil && win != nil {
 				auctionID := resp.AuctionID
 				if auctionID == "" && resp.BidResp != nil {
 					auctionID = resp.BidResp.ID
@@ -1865,10 +1889,11 @@ func (h *VideoPipelineHandler) ORTBEndpoint() httprouter.Handle {
 		}
 
 		if !resp.NoFill {
-			h.videoStats.incFillBatch(adsCfg.PublisherID, adsCfg.AdvertiserID)
-			h.videoStats.incDimFill(adsCfg, req, resp, resolveDemandType(adsCfg))
-			h.recordOpportunityMetric(req, adsCfg, resp)
-			h.recordBidReport(adsCfg, req, resp, "win")
+			winnerCfg := winnerTelemetryConfig(adsCfg, resp)
+			h.videoStats.incFillBatch(winnerCfg.PublisherID, winnerCfg.AdvertiserID)
+			h.videoStats.incDimFill(winnerCfg, req, resp, resolveDemandType(winnerCfg))
+			h.recordOpportunityMetric(req, winnerCfg, resp)
+			h.recordBidReport(winnerCfg, req, resp, "win")
 		}
 		h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
 		h.metricsEng.RecordRequestTime(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusOK}, time.Since(start))

@@ -72,6 +72,10 @@ type DemandResponse struct {
 	BidResp  *openrtb2.BidResponse
 	WinPrice float64
 	NoFill   bool // true = wrapper fallback, not a real demand fill
+	// WinnerConfig is the runtime config of the demand source that produced this
+	// response. It is used for downstream telemetry attribution when waterfall
+	// sources compete in parallel.
+	WinnerConfig *AdServerConfig
 	// Win details — populated when a real bid wins (NoFill=false).
 	Bidder    string
 	CrID      string

@@ -151,3 +151,57 @@ func TestVideoExchangeSyncPipelineCfgUsesReverseSupplyLinkWhenCampaignIDMissing(
 		t.Fatalf("expected reverse-linked ortb url, got %q", registered.DemandOrtbURL)
 	}
 }
+
+func TestVideoExchangeSyncPipelineCfgPropagatesExtraDemandIdentity(t *testing.T) {
+	handler := NewVideoExchangeHandler("")
+	campaigns := newCampaignStore("")
+	handler.SetCampaignStore(campaigns)
+
+	var registered *AdServerConfig
+	handler.SetPipelineRegister(func(cfg *AdServerConfig) {
+		registered = cfg
+	})
+
+	primary := campaigns.create(&Campaign{
+		Name:            "Primary Campaign",
+		AdvertiserID:    "adv-primary",
+		PublisherID:     "pub-1",
+		OrtbEndpointURL: "https://primary.example/openrtb",
+		FloorCPM:        0.5,
+	})
+	extra := campaigns.create(&Campaign{
+		Name:         "Extra Campaign",
+		AdvertiserID: "adv-extra",
+		PublisherID:  "pub-1",
+		VASTTagURL:   "https://extra.example/vast",
+		FloorCPM:     3.0,
+	})
+
+	handler.syncPipelineCfg(&VideoExchangeEntry{
+		ID:          "placement-extra",
+		PublisherID: "pub-1",
+		Environment: VideoEnvCTV,
+		Placement:   PlacementInStream,
+		MinDuration: 15,
+		MaxDuration: 30,
+		CampaignID:  primary.ID,
+		DemandLinks: []string{primary.ID, extra.ID},
+		Active:      true,
+	})
+
+	if registered == nil {
+		t.Fatal("expected config to be registered")
+	}
+	if len(registered.ExtraDemand) != 1 {
+		t.Fatalf("expected 1 extra demand source, got %d", len(registered.ExtraDemand))
+	}
+	if registered.ExtraDemand[0].CampaignID != extra.ID {
+		t.Fatalf("expected extra campaign id %q, got %q", extra.ID, registered.ExtraDemand[0].CampaignID)
+	}
+	if registered.ExtraDemand[0].AdvertiserID != "adv-extra" {
+		t.Fatalf("expected extra advertiser id adv-extra, got %q", registered.ExtraDemand[0].AdvertiserID)
+	}
+	if registered.ExtraDemand[0].FloorCPM != 3.0 {
+		t.Fatalf("expected extra floor 3.0, got %v", registered.ExtraDemand[0].FloorCPM)
+	}
+}

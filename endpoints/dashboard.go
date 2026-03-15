@@ -935,11 +935,13 @@ func (h *VideoExchangeHandler) syncPipelineCfg(e *VideoExchangeEntry) {
 			}
 			if camp, ok := h.campStore.get(campID); ok {
 				extra := ExtraDemandCfg{
-					VASTTagURL: camp.VASTTagURL,
-					OrtbURL:    camp.OrtbEndpointURL,
-					FloorCPM:   camp.FloorCPM,
-					BCat:       camp.BCat,
-					BAdv:       camp.BAdv,
+					VASTTagURL:   camp.VASTTagURL,
+					OrtbURL:      camp.OrtbEndpointURL,
+					FloorCPM:     camp.FloorCPM,
+					CampaignID:   camp.ID,
+					AdvertiserID: camp.AdvertiserID,
+					BCat:         camp.BCat,
+					BAdv:         camp.BAdv,
 				}
 				if extra.VASTTagURL != "" || extra.OrtbURL != "" {
 					cfg.ExtraDemand = append(cfg.ExtraDemand, extra)

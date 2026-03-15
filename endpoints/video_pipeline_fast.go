@@ -71,10 +71,11 @@ func (h *VideoPipelineHandler) HandleFastVAST(ctx *fasthttp.RequestCtx) {
 	}
 
 	if !resp.NoFill {
-		h.videoStats.incFillBatch(adsCfg.PublisherID, adsCfg.AdvertiserID)
-		h.videoStats.incDimFill(adsCfg, req, resp, resolveDemandType(adsCfg))
-		h.recordOpportunityMetric(req, adsCfg, resp)
-		h.recordBidReport(adsCfg, req, resp, "win")
+		winnerCfg := winnerTelemetryConfig(adsCfg, resp)
+		h.videoStats.incFillBatch(winnerCfg.PublisherID, winnerCfg.AdvertiserID)
+		h.videoStats.incDimFill(winnerCfg, req, resp, resolveDemandType(winnerCfg))
+		h.recordOpportunityMetric(req, winnerCfg, resp)
+		h.recordBidReport(winnerCfg, req, resp, "win")
 	}
 	h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
 	h.metricsEng.RecordRequestTime(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusOK}, time.Since(start))
@@ -121,7 +122,8 @@ func (h *VideoPipelineHandler) HandleFastORTB(ctx *fasthttp.RequestCtx) {
 	}
 
 	if !resp.NoFill && resp.BidResp != nil {
-		if win, bidder, werr := h.extractWinningBid(resp.BidResp, adsCfg); werr == nil && win != nil {
+		winnerCfg := winnerTelemetryConfig(adsCfg, resp)
+		if win, bidder, werr := h.extractWinningBid(resp.BidResp, winnerCfg); werr == nil && win != nil {
 			auctionID := resp.AuctionID
 			if auctionID == "" && resp.BidResp != nil {
 				auctionID = resp.BidResp.ID
@@ -160,10 +162,11 @@ func (h *VideoPipelineHandler) HandleFastORTB(ctx *fasthttp.RequestCtx) {
 	}
 
 	if !resp.NoFill {
-		h.videoStats.incFillBatch(adsCfg.PublisherID, adsCfg.AdvertiserID)
-		h.videoStats.incDimFill(adsCfg, req, resp, resolveDemandType(adsCfg))
-		h.recordOpportunityMetric(req, adsCfg, resp)
-		h.recordBidReport(adsCfg, req, resp, "win")
+		winnerCfg := winnerTelemetryConfig(adsCfg, resp)
+		h.videoStats.incFillBatch(winnerCfg.PublisherID, winnerCfg.AdvertiserID)
+		h.videoStats.incDimFill(winnerCfg, req, resp, resolveDemandType(winnerCfg))
+		h.recordOpportunityMetric(req, winnerCfg, resp)
+		h.recordBidReport(winnerCfg, req, resp, "win")
 	}
 	h.metricsEng.RecordRequest(metrics.Labels{RType: metrics.ReqTypeVideo, PubID: adsCfg.PublisherID, RequestStatus: metrics.RequestStatusOK})
 	h.metricsEng.RecordRequestTime(metrics.Labels{RType: metrics.ReqTypeVideo, RequestStatus: metrics.RequestStatusOK}, time.Since(start))
